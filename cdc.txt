@@ -1,0 +1,276 @@
+     Cahier des charges architecture multi-agents
+
+
+                                February 4, 2026
+
+
+1     Database
+    • Données réelles : issues des données capteurs et de l’utilisateur (simulateur
+      de données)
+      Clé Primaire : (heure, jour, mois, année)
+      Une ligne par pas de temps qui contient :
+      - heure
+      - jour
+      - mois
+      - année
+      - tf rigo
+      - Tmin
+      - Tmax
+      - Tout−reel
+      - Tin−reel
+      -G
+      - αpresence−reel
+      - P Vreel
+      - Pf ixe
+      - Pf lex−reel
+      - Pin
+      - Pgo
+      - Ebat
+      -S
+      - Cbuy−reel
+      - Csell−reel
+
+    • Données prédites : provient des API, modèles de prédiction
+      Clé Primaire : (heure, jour, mois, année)
+      une ligne par pas de temps qui contient :
+      - heure
+      - jour
+      - mois
+      - année
+      - Tout
+
+
+                                          1
+      - Tin
+      -G
+      - αpresence−predit
+      - PV
+      - Pf ixe−predit
+      - Pf lex−predit
+      - Cbuy−predit
+      - Csell−predit
+
+
+2     Liste de fonctionnalités
+2.1    Optimiseur
+Description      Répartir la demande utilisateur entre les differentes sources d’energie.
+Objectifs
+    • Minimiser les coûts
+    • Minimiser les émissions carbone
+
+    • Maximiser le confort utilisateur
+    • Maximiser la charge de la batterie (pour maximiser sa durée de vie)
+
+Entrées
+    • Horizon de temps: 24h
+    • Pas de temps: 1h
+
+    • (demande) Puissance fixe de l’utilisateur (Pf ixe (t))
+    • (demande) Puissance flexible de l’utilisateur (peut être deconnectée) (Pf lex (t))
+    • (fixe) Cout de vente de l’energie (au main grid) (Cgrid sell )
+    • (fixe) Cout d’achat de l’energie (au main grid) (Cgrid buy )
+
+    • Puissance fournie par PV (P V (t))
+    • (fixe) Coefficient d’émissions (Cemissions grid )
+    • (fixe) Paramètres physiques (Cbat , Ebat
+                                            max    max
+                                                , Pgo     max
+                                                       , Pin               max
+                                                              , P V max , Pch  = B max ,
+        max      max
+      Pdis = A       )
+
+
+
+
+                                          2
+Sortie     Pour chaque pas de temps:
+   • Puissance achetée au main grid (Pin (t))
+   • Puissance vendue au main grid (Pgo (t))
+   • Puissance injectee dans les batteries, charge (Pch (t)).
+
+   • Puissance utilisée depuis la batterie, décharge (Pdis (t)).
+   • Variable binaire pour couper les charges flexibles (S(t))
+
+Résolution     Module d’optimisation, MILP (CPLEX) -¿ cf partie déjà implémentée
+
+2.2      Predicteur
+2.2.1     Predicteur tarifs
+Predire pour chaque jour suivant les prix d’achat et de vente au main grid
+
+Entrées    : Jour j
+
+Sorties    Tarif de l’électricité à chaque heure (Csell (t), Cbuy (t))
+
+2 Resolutions possibles         :
+   • Contrat d’élec de la forme : Cbuy (t) = Cmax 1H pleines (t)+Cmin 1H creuses (t)
+     et Csell déduit par un coef (Csell = βCbuy )
+   • API pour récupérer modèle de prediction existant de Cbuy (t) [2] et déduire
+     Csell (t) via un coef (autre lien API consulté : https://open-dpe.fr/API-
+     prix-electricite/)
+
+2.2.2     Predicteur PV
+2.2.3     Predicteur puissance
+Predire pour chaque jour suivant la production énergetique PV
+
+Entrées    : jour j
+
+Sorties    Production PV à chaque heure P V (t)
+
+
+
+
+                                            3
+Resolution     :
+   • Récuperer la prévision météo (température, irradiance solaire) via une
+     API et la convertir en PV via :
+         – Formule physique reliant l’irradiance et la température reçue sur le
+           panneau photovoltaic et la puissance qu’il produit : [1] :
+
+                                           G(t)
+                            P (t) = PSTC        [1 + β (Tout (t) − 25)]
+                                           1000
+
+         – Puis, à partir d’un certain temps (environ quelques mois), la for-
+           mule précédente n’est plus valable car les performances du panneau
+           photovoltaı̈que se dégrade -¿ modèle de ML qui apprend la relation
+           P V (t) = f (Tout (t), G(t)) à partir de nos données capteurs et des de
+           l’historique des données dans notre BDD[3])
+
+2.2.4    Prédicteur demande utilisateur
+Description : Prédire la demande utilisateur (fixe et flexible) pour chaque
+jour suivant.
+Définissons les puissances fixes et flexibles :
+
+   • Pf ixe : frigo à température tf rigo donnée par utilisateur ou fixée, intervalle
+     de température [Tmin , Tmax ] donné par l’utilisateur ou fixé (Tmin pour
+     chauffage en hiver et Tmax pour clim en été), plaques électriques, lumières,
+     HWE (chauffage eau)
+
+   • Pf lex : température de confort, machine à laver, sèche-linge, lave-vaisselle,
+     appareils électroniques
+
+Entree    :
+   • Historique des données capteurs pour Pf lex et Pf ixe (notamment t, Tout (t), Tin (t), G(t), αpresence (t)
+     et les vraies valeurs de Pf lex (t) et Pf ixe ) + Préférences utilisateur (tf rigo , Tmin , Tmax )
+     pour Pf ixe
+
+Sortie   : Renvoie Pfixe (t) et Pflex (t) à chaque heure (puissance demandée)
+
+Resolution Module de prédiction (Outils statistiques) qui se base sur l’historique
+de la demande (Pfixe et Pflex ) et qui prend en compte les preferences utilisateur
+(s’il y’en a)
+
+   • Pfixe : modèle de ML qui apprend la relation Pfixe (t) = f (t, Tout (t), Tin (t), G(t), αpresence (t))
+
+   • Pflex : modèle de ML qui apprend la relation Pflex (t) = f (t, Tout (t), Tin (t), G(t), αpresence (t))
+
+
+
+
+                                           4
+2.3    Data qualité
+Description Récupère les données des prédictions et des capteurs et les aggrège
+dans les databases correspondantes.
+
+Entree     : Bases de données, prédictions et données capteurs
+
+Sorties    : Bases de données mises à jour
+
+Resolution      Traitement de données :
+
+Tâches de l’agent
+   • Récupération des données toutes les 24h
+          – Récupérer les nouvelles données réelles des capteurs et/ou simula-
+            teurs toutes les 24h
+          – Récupérer les nouvelles données prédites des API et/ou modèles de
+            ML que nous avons fait toutes les 24h
+   • Verification et preprocessing de la donnée
+          – S’assurer lors de la récupération des données que ce sont les noms de
+            variables attendues et les bonnes unités (W→kW, Wh→kWh, etc.)
+            et formats (float / int / bool) : mapping source de données (API,
+            générateur de données → schéma interne de notre BDD).
+          – Détecter les doublons et les trous et les flag (OU BIEN on définit
+            des règles : pour les trous de prendre les mêmes valeurs que la journée
+            précédente).
+   • Contrôles de plages physiques
+          – Vérifier que les valeurs sont dans les bornes physiques configurées (ex
+                                                                         max
+            : T ∈ [Tmin , Tmax ], G ≥ 0, αpresence ∈ [0, 1], Ebat ∈ [0, Ebat ]).
+          – Si hors plage : appliquer une règle (clamp à la borne)
+   • Contrôles de cohérence interne (règles métier)
+          – Vérifier la cohérence entre variables au même pas de temps (ex :
+            éviter Pin (t) > 0 et Pgo (t) > 0 simultanément).
+          – Vérifier la validité des variables binaires (ex : S(t) ∈ {0, 1}) et cor-
+            riger si nécessaire
+          – Détecter des incohérences simples (ex : G(t) = 0 mais P V (t) élevé)
+            et créer des flags sans correction forcée.
+   • Traçabilité et qualité
+
+
+
+                                           5
+          – Ajouter pour chaque variable des métadonnées : source (capteur/API/modèle/simulateur),
+            date d’ingestion, version de règles.
+          – Enregistrer les flags qualité (ex : FORMAT ERROR, OUT OF RANGE, TIME GAP,
+            IMPUTED, INCONSISTENT).
+          – Possibilité d’enrichissement des données, par exemple quand des données
+            ont été bien prédites afin de leur affecter un poids potentiel dans les
+            entrainements futurs
+   • Exposition des données prêtes à consommer
+          – Fournir une extraction “clean” sur une fenêtre (ex : 24h) pour l’optimiseur
+          – Fournir une extraction historique pour l’analyse statistiques et pour
+            la détection d’anomalies.
+
+2.4      Detection d’anomalies
+Description Identifier dysfonctionnements dans les capteurs (valeurs aber-
+rantes). Identifier des comportements utilisateurs irresponsables.
+
+Sorties    Alertes et/ou des recommandations sur une planification de mainte-
+nance.
+
+Resolution      2 résolutions possibles:
+
+
+   • Etablir des règles ”dures” pour toutes les variables provenant des capteurs
+     et des utilisateurs
+
+   • Utiliser des méthodes statistiques indiquant si la valeur d’une variable
+     provenant d’un capteur ou d’un utilisateur est anormale : modèle de ma-
+     chine learning non supervisé comme Isolation Forest ou décomposition
+     de la série temporelle Xt selon saison, tendance, résidu puis tests sur les
+     résidus (modèle SARIMA par exemple)
+
+2.5      Analyse de données
+A faire plus tard: Représentation des résultats
+
+Description      Evaluer le systéme à partir d’indicateurs de performance
+
+Entrées    Database
+
+Sortie     : Dashboard + chatbot
+
+Resolution      : Analyse de données + LLM
+
+
+                                         6
+References
+[1] Simon Meunier. Photovoltaic systems — cours cs 2a renewable energy.
+    https://centralesupelec.edunao.com/pluginfile.php/436931/mod_
+    resource/content/1/Lecture_Photovoltaic_Systems_20240406.pdf,
+    2024. Consulté en janvier 2026.
+[2] RTE France.    Prix horaire d’achat d’électricité — données marché
+    eco2mix.      https://www.rte-france.com/donnees-publications/
+    eco2mix-donnees-temps-reel/donnees-marche, 2026.         Consulté en
+    janvier 2026.
+[3] ScienceDirect. Optimal scheduling of smart home energy systems: A
+    user-friendly and adaptive home intelligent agent with self-learning
+    capability.    https://www.sciencedirect.com/science/article/pii/
+    S2666792424000209?ref=pdf_download&fr=RR-2&rr=9c18959028cdda89,
+    2024. Consulté en janvier 2026.
+
+
+
+
+                                    7
+
