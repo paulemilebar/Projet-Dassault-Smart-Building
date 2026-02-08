@@ -184,6 +184,54 @@ def generate_predicted_day(run_date: date, cfg: SimulationConfig = SimulationCon
     return pred[PRED_COLUMNS]
 
 
+def _simulate_battery_and_grid(
+    demand_kw: np.ndarray,
+    pv_kw: np.ndarray,
+    cfg: SimulationConfig,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    
+    """ Simulate the battery state of charge (Ebat), grid import (Pin) and export (Pgo) 
+    based on the demand and PV production."""
+    
+    ebat = np.zeros(24, dtype=float)
+    pin = np.zeros(24, dtype=float)
+    pgo = np.zeros(24, dtype=float)
+    s = np.zeros(24, dtype=int) # Binary variable indicating if we import from the grid (1) or not (0)
+
+    e_prev = cfg.ebat_initial_kwh
+
+    for t in range(24):
+        net = demand_kw[t] - pv_kw[t]
+
+        if net <= 0: ## i.e we have excess PV production that can be used to charge the battery or sell to the grid
+            surplus = -net
+            ## battery first, grid export second
+
+            ## TODO : 
+            # Maybe we can be smarter and sell to the grid during high price hours 
+            # instead of charging the battery at maximum power ? 
+            # For now we just prioritize the battery for simplicity 
+
+            charge = min(surplus, cfg.pch_max_kw, (cfg.ebat_max_kwh - e_prev) / cfg.eta_ch)
+            e_now = min(cfg.ebat_max_kwh, e_prev + charge * cfg.eta_ch)
+            sell = max(0.0, surplus - charge)
+            pin[t] = 0.0
+            pgo[t] = sell
+        else: ## we have a net demand that can be met by discharging the battery or importing from the grid
+            discharge = min(net, cfg.pdis_max_kw, e_prev * cfg.eta_dis)
+            e_now = max(0.0, e_prev - discharge / cfg.eta_dis)
+            import_grid = max(0.0, net - discharge)
+            pin[t] = import_grid
+            pgo[t] = 0.0
+            if import_grid > 1.8: 
+                s[t] = 1
+
+        ebat[t] = e_now
+        e_prev = e_now
+
+    return np.round(pin, 3), np.round(pgo, 3), np.round(ebat, 3), s
+
+
 def _validate_common(df: pd.DataFrame, expected_columns: list[str], table_name: str) -> None:
     """  
     Common validation for both predicted and real data tables:
