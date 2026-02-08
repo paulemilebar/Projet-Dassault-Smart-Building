@@ -77,7 +77,7 @@ class SimulationConfig:
     ebat_initial_kwh: float = 6.0 # Initial battery energy in kWh
     
     ## Exogenous parameters
-    pv_kw_peak: float = 6.0 # Peak PV generation in kW
+    pv_kw_peak: float = 6.0 # installed PV capacity (How much power the PV can produce at maximum irradiance)
     tfrigo_c: float = 4.0 # Fridge temperature in °C
 
     ## Decision constraints
@@ -138,4 +138,88 @@ def _occupancy_profile(hours: np.ndarray, rng: np.random.Generator) -> np.ndarra
     occupancy[(hours >= 0) & (hours <= 5)] *= 0.35
     occupancy += rng.normal(0.0, 0.03, size=hours.shape[0])
     return np.clip(occupancy, 0.0, 1.0)
+
+
+
+def _tariff_profile(hours: np.ndarray) -> np.ndarray:
+    cbuy = np.full(24, 0.17)
+    cbuy[(hours >= 7) & (hours < 11)] = 0.23
+    cbuy[(hours >= 18) & (hours < 22)] = 0.29
+    cbuy[(hours >= 0) & (hours < 6)] = 0.14
+    return cbuy
+
+
+def generate_predicted_day(run_date: date, cfg: SimulationConfig = SimulationConfig()) -> pd.DataFrame:
+    """"Generate the donnees_predites table for a given date based on the simulation configuration."""
+    rng = np.random.default_rng(cfg.seed)
+    df = _build_time_index(run_date)
+    h = df["heure"].to_numpy()
+
+    tout, tin = _temperature_profile(h, rng)
+    irradiance = _daylight_irradiance_w_m2(h, rng)
+    occupancy = _occupancy_profile(h, rng)
+
+    ## pv = pv_kw_peak * irradiance / 1000.0 with some noise and clipping to [0, pv_kw_peak]
+    pv = np.clip(cfg.pv_kw_peak * irradiance / 1000.0, 0.0, cfg.pv_kw_peak)
+    
+    ## profile for both pfixe and pflex
+    pfixe = 0.8 + 0.03 * np.maximum(0.0, 22.0 - tout) + 0.18 * (tin < cfg.tmin_c)
+    pflex = 0.25 + 1.5 * occupancy
+
+    cbuy = _tariff_profile(h)
+    csell = cfg.price_beta_sell * cbuy
+
+    pred = df.copy()
+    pred["Tout"] = np.round(tout, 3)
+    pred["Tin"] = np.round(tin, 3)
+    pred["G"] = np.round(irradiance, 3)
+    pred["alpha_presence_predit"] = np.round(occupancy, 4)
+    pred["PV"] = np.round(pv, 3)
+    pred["Pfixe_predit"] = np.round(pfixe, 3)
+    pred["Pflex_predit"] = np.round(pflex, 3)
+    pred["Cbuy_predit"] = np.round(cbuy, 4)
+    pred["Csell_predit"] = np.round(csell, 4)
+
+    validate_predicted(pred)
+    return pred[PRED_COLUMNS]
+
+
+def _validate_common(df: pd.DataFrame, expected_columns: list[str], table_name: str) -> None:
+    """  
+    Common validation for both predicted and real data tables:
+        - Check for expected columns
+        - Check for 24 rows (one per hour)
+        - Check for duplicate primary keys (heure, jour, mois, annee)
+        - Check for NaN values
+        - Check that 'heure' column contains values from 0 to 23 in order
+    """
+    missing = [c for c in expected_columns if c not in df.columns]
+    if missing:
+        raise ValueError(f"{table_name}: missing columns {missing}")
+
+    if len(df) != 24:
+        raise ValueError(f"{table_name}: expected 24 rows, got {len(df)}")
+
+    key_dupes = df.duplicated(subset=["heure", "jour", "mois", "annee"]).sum()
+    if key_dupes:
+        raise ValueError(f"{table_name}: duplicate primary keys found ({key_dupes})")
+
+    if df[expected_columns].isna().any().any():
+        raise ValueError(f"{table_name}: NaN values found")
+
+    sorted_hours = df["heure"].to_list()
+    if sorted_hours != list(range(24)):
+        raise ValueError(f"{table_name}: 'heure' must be 0..23 in order")
+
+def validate_predicted(df: pd.DataFrame) -> None:
+    _validate_common(df, PRED_COLUMNS, "donnees_predites")
+
+    if (df["G"] < 0).any():
+        raise ValueError("donnees_predites: G must be >= 0")
+    if (df["PV"] < 0).any():
+        raise ValueError("donnees_predites: PV must be >= 0")
+    if ((df["alpha_presence_predit"] < 0) | (df["alpha_presence_predit"] > 1)).any():
+        raise ValueError("donnees_predites: alpha_presence_predit must be in [0, 1]")
+    if (df["Cbuy_predit"] < 0).any() or (df["Csell_predit"] < 0).any():
+        raise ValueError("donnees_predites: prices must be >= 0")
 
