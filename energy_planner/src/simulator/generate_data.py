@@ -20,7 +20,7 @@ from simulator.validation import validate_predicted, validate_real
 
 """
 TODO : For now we generate one day, maybe of interest to generate multiple days ? 
-
+TODO : Need to code some processing functions to create the processed CSV files from the raw data
 This module generates synthetic daily datasets for the smart building energy management.
 It creates two tables: 
     - "donnees_predites" with predicted values 
