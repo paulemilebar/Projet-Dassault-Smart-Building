@@ -7,6 +7,8 @@ def optimize(C_grid_buy: list, C_grid_sell: list, C_L, C_bat, C_emissions_grid, 
 
     
     ## TO DO REMOVE THIS PART WHERE WE DEFINE ALL THE VALUES
+    ## LETS WAIT BEFORE OUR GENERATOR AND DATABASE WORK WELL
+    
     C_grid_buy  = [0.12 if (h < 8 or h >= 20) else 0.20 for h in T]
     C_grid_sell = [0.12 for _ in T]
 
@@ -314,8 +316,9 @@ def optimize(C_grid_buy: list, C_grid_sell: list, C_L, C_bat, C_emissions_grid, 
                   f"{Pin:4.2f} | "
                 f"{Pgo:4.2f} | "
                 f"{PVt:4.2f} | "
-                    "{Pch:4.2f} | "
-                "{Pdis:4.2f} | "
+                f"{Pch:4.2f} | "
+                f"{Pdis:4.2f} | "
                 f"{Ebat:4.2f} | "
                 f"{int(round(Sval))}")
+            
     return vals, idx_Pin, idx_Pgo, idx_PV, idx_Pch, idx_Pdis, idx_Ebat, idx_S
