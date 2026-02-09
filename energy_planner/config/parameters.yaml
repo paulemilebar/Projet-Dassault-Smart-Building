@@ -11,3 +11,11 @@ eta_dis: 0.95
 tfrigo: 4.0
 Tmin: 20.0
 Tmax: 25.0
+
+# Optimizer objective and network limits
+C_L: 2.0
+C_bat: 0.005
+C_emissions_grid: 1.0
+C_emissions_PV: 0.02
+P_g_max_import: 7.0
+P_g_max_export: 4.0

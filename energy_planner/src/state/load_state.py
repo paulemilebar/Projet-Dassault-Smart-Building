@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import date
 from pathlib import Path
 
@@ -70,6 +68,13 @@ def load_current_state(
         "tfrigo": float(raw.get("tfrigo", cfg.tfrigo_c)),
         "Tmin": float(raw.get("Tmin", cfg.tmin_c)),
         "Tmax": float(raw.get("Tmax", cfg.tmax_c)),
+        # Parametres objectif/contraintes reseau pour l'optimiseur.
+        "C_L": float(raw.get("C_L", 2.0)),
+        "C_bat": float(raw.get("C_bat", 0.005)),
+        "C_emissions_grid": float(raw.get("C_emissions_grid", 1.0)),
+        "C_emissions_PV": float(raw.get("C_emissions_PV", 0.02)),
+        "P_g_max_import": float(raw.get("P_g_max_import", 7.0)),
+        "P_g_max_export": float(raw.get("P_g_max_export", 4.0)),
         "run_date": run_date.isoformat() if run_date else None,
     }
 
@@ -80,5 +85,7 @@ def load_current_state(
         raise ValueError("Invalid state: charge/discharge power limits must be > 0")
     if not (0 < state["eta_ch"] <= 1) or not (0 < state["eta_dis"] <= 1):
         raise ValueError("Invalid state: efficiencies must be in (0, 1]")
+    if state["P_g_max_import"] < 0 or state["P_g_max_export"] < 0:
+        raise ValueError("Invalid state: grid import/export limits must be >= 0")
 
     return state
