@@ -18,6 +18,16 @@ from simulator.schema import PRED_COLUMNS, REAL_COLUMNS, SimulationConfig
 from simulator.storage import save_daily_csv
 from simulator.validation import validate_predicted, validate_real
 
+
+## TO DO : change that because there is a problem of path when laucing the simulation. QUICK FIX HERE:
+from pathlib import Path
+import sys
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from Predictor_agent.predictor_electricity_price import predict_next_24h_open_dpe, OpenDpeConfig
+
 """
 TODO : For now we generate one day, maybe of interest to generate multiple days ? 
 TODO : Need to code some processing functions to create the processed CSV files from the raw data
@@ -56,8 +66,17 @@ def generate_predicted_day(run_date: date, cfg: SimulationConfig = SimulationCon
     pv = np.clip(cfg.pv_kw_peak * irradiance / 1000.0, 0.0, cfg.pv_kw_peak)
     pfixe = 0.8 + 0.03 * np.maximum(0.0, 22.0 - tout) + 0.18 * (tin < cfg.tmin_c)
     pflex = 0.25 + 1.5 * occupancy
-    cbuy = tariff_profile(h)
-    csell = cfg.price_beta_sell * cbuy
+    
+    # use predictor agent for predicting electricity prices
+    cfg = OpenDpeConfig(
+        tariff="EDF_bleu",
+        option="HC/HP",
+        beta_sell=0.6,
+        hc_hours_weekday=range(9, 18),
+    )
+    res = predict_next_24h_open_dpe(config=cfg)
+    cbuy = res.cbuy
+    csell = res.csell
 
     pred = df.copy()
     pred["Tout"] = np.round(tout, 3)
