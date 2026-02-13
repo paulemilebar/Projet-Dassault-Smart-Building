@@ -1,5 +1,4 @@
 # Default state/config values for MVP loader.
-# You can tune these without changing Python code.
 
 E_bat_0: 6.0
 E_max: 13.5
