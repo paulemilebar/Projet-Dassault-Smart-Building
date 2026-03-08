@@ -201,7 +201,7 @@ def generate_and_save_day(
 ) -> dict[str, Path]:
     predicted = generate_predicted_day(run_date=run_date, cfg=cfg)
     real = generate_real_day(run_date=run_date, predicted=predicted, cfg=cfg)
-    raw_pred, raw_real, proc_pred, proc_real = save_daily_csv(
+    raw_pred, raw_real, proc_pred, proc_real, hist_pred, hist_real = save_daily_csv(
         predicted=predicted,
         real=real,
         run_date=run_date,
@@ -212,4 +212,6 @@ def generate_and_save_day(
         "raw_real_csv": raw_real,
         "processed_predicted_csv": proc_pred,
         "processed_real_csv": proc_real,
+        "historic_predicted_csv": hist_pred,
+        "historic_real_csv": hist_real,
     }
