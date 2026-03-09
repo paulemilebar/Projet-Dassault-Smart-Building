@@ -2,10 +2,12 @@ import argparse
 from datetime import date, datetime
 
 import pandas as pd
+from pathlib import Path
 
 from ingestion.load_predicted_inputs import load_predicted_inputs
 from state.load_state import load_current_state
 from simulator.generate_data import SimulationConfig, generate_and_save_day
+from Predictor_agent.predictor_ppv import WeatherProvider, PhysicalPVPredictor, MLPVPredictor, HybridPVPredictor
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,12 +81,29 @@ def _run_optimizer(predicted_inputs: pd.DataFrame, state: dict) -> pd.DataFrame 
         )
     return pd.DataFrame(rows)
 
+# Paramètres du panneau
+P_STC = 3000  
+BETA = -0.004 
+NOCT = 45
+NB_PANELS = 1
 
+# Coordonnées du smart building (ex: Paris)
+LAT = 48.8566
+LON = 2.3522
+
+HISTORIC_CSV_PATH = Path("./energy_planner/data/historic/donnees_reelles_historique.csv")
+    
+    
 def main() -> None:
     args = parse_args()
     run_date = parse_run_date(args.run_date)
     cfg = SimulationConfig(seed=args.seed)
-    paths = generate_and_save_day(run_date=run_date, cfg=cfg)
+    weather_provider = WeatherProvider(latitude=LAT, longitude=LON)
+    phys_predictor = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS) 
+    ml_predictor = MLPVPredictor(historic_real_csv=HISTORIC_CSV_PATH)
+    hybrid_pv_agent = HybridPVPredictor(phys_predictor, ml_predictor, weather_provider)
+    
+    paths = generate_and_save_day(run_date=run_date, cfg=cfg, pv_agent=hybrid_pv_agent)
     predicted_inputs = load_predicted_inputs(run_date=run_date)
     state = load_current_state(run_date=run_date)
 

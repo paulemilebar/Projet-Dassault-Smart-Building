@@ -175,7 +175,7 @@ if __name__ == "__main__":
     # Instanciation des composants
     weather_api = WeatherProvider(latitude=LAT, longitude=LON)
     phys_agent = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS)
-    ml_agent = MLPVPredictor(historic_real_csv=test_historic_path, min_samples=720)
+    ml_agent = MLPVPredictor(historic_real_csv=test_historic_path, min_samples=720, delta_train_days=7)
     
     # L'agent hybride rassemble le tout
     smart_agent = HybridPVPredictor(
