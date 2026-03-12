@@ -60,3 +60,63 @@ Important distinction:
 
 - `predicted inputs` = hourly forecast variables (`PV`, `Pfix`, `Pflex`, prices).
 - `state/config` = fixed constraints and weights (battery limits, efficiencies, costs, grid limits).
+
+## Demand Forecasting Package
+
+The repository now includes a separate demand-forecasting module in `Predictor_demand/`.
+It trains two random-forest models:
+
+- one for fixed demand: `Pfixe`
+- one for flexible demand: `Pflex`
+
+The feature set is intentionally minimal and interpretable:
+
+- `hour`
+- `day`
+- `month`
+- `year`
+- `Tout`
+- `Tin`
+- `occupancy`
+- `heating_gap_outdoor`
+- `below_tmin_flag`
+
+Train the demand models from repository root:
+
+```bash
+python -m Predictor_demand.train_user_demand_model --train-end-date 2026-03-11 --num-train-days 90 --num-valid-days 10 --output-dataset energy_planner/data/processed/synthetic_user_demand_history.csv
+```
+
+This writes the bundle to:
+
+- `Predictor_demand/models/user_demand_rf_bundle.joblib`
+
+Training prints validation metrics directly:
+
+- `MAE`: average absolute prediction error
+- `RMSE`: larger errors are penalized more strongly
+- `R2`: how well the model explains the target variance (`1.0` is best)
+
+Generate a 24-hour demand forecast CSV:
+
+```bash
+python -m Predictor_demand.predictor_user_demand --run-date 2026-03-12 --output-csv energy_planner/data/processed/predicted_user_demand_2026-03-12.csv
+```
+
+Evaluate the trained model on held-out synthetic days:
+
+```bash
+python -m Predictor_demand.evaluate_user_demand_model --start-date 2026-03-12 --num-days 3 --output-csv energy_planner/data/processed/user_demand_eval_2026-03-12.csv
+```
+
+This reports forecast quality for both `Pfixe` and `Pflex` and can also save hour-level predicted vs actual rows for inspection.
+
+Visualize the evaluation CSV as an HTML report:
+
+```bash
+python -m Predictor_demand.visualize_user_demand_evaluation --input-csv energy_planner/data/processed/user_demand_eval_2026-03-12.csv --output-html energy_planner/data/processed/user_demand_eval_2026-03-12.html
+```
+
+If the evaluation command is run with `--num-days 3`, the output CSV will contain 72 rows: 24 hourly rows for each of the three days in the evaluation window.
+
+This package is now used in the predicted-demand path of the simulator. Realized demand remains simulated so forecast quality can still be evaluated against synthetic ground truth.

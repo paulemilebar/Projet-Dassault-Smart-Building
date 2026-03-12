@@ -42,6 +42,15 @@ def _read_simple_yaml(path: Path) -> dict:
     return data
 
 
+def _resolve_config_path(config_path: str | Path) -> Path:
+    path = Path(config_path)
+    if path.is_absolute():
+        return path
+    if path.parts[:1] == ("energy_planner",):
+        return Path(__file__).resolve().parents[2] / "config" / path.name
+    return Path.cwd() / path
+
+
 def load_current_state(
     run_date: date | None = None,
     config_path: str | Path = "energy_planner/config/parameters.yaml",
@@ -54,7 +63,7 @@ def load_current_state(
     - optional overrides come from config YAML
     """
     cfg = SimulationConfig()
-    raw = _read_simple_yaml(Path(config_path))
+    raw = _read_simple_yaml(_resolve_config_path(config_path))
 
     # Optimizer-required battery and constraint parameters.
     state = {

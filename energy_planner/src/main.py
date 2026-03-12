@@ -33,7 +33,7 @@ def parse_run_date(raw: str | None) -> date:
     return datetime.strptime(raw, "%Y-%m-%d").date()
 
 
-def _run_optimizer(predicted_inputs: pd.DataFrame, state: dict) -> pd.DataFrame | None:
+def run_optimizer_plan(predicted_inputs: pd.DataFrame, state: dict) -> pd.DataFrame | None:
     """
     Exécute l'optimiseur MILP avec les donnees du pipeline.
     Retourne un DataFrame planifie (24 lignes) ou None si non resolu.
@@ -115,7 +115,7 @@ def main() -> None:
     print(f"... total rows: {len(predicted_inputs)}")
     print("\nLoaded state:")
     print(state)
-    plan_df = _run_optimizer(predicted_inputs, state)
+    plan_df = run_optimizer_plan(predicted_inputs, state)
     if plan_df is not None:
         print("\nOptimizer plan (first 6 rows):")
         print(plan_df.head(6).to_string(index=False))

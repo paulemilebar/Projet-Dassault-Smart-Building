@@ -20,6 +20,13 @@ _REQUIRED_PREDICTED_COLUMNS = [
 ]
 
 
+def _resolve_data_root(data_root: str | Path) -> Path:
+    root = Path(data_root)
+    if root.is_absolute():
+        return root
+    return Path(__file__).resolve().parents[2] / root.name if root.parts[:1] == ("energy_planner",) else Path.cwd() / root
+
+
 def _build_predicted_csv_path(run_date: date, data_root: str | Path, processed: bool = True) -> Path:
     """
     Build the expected predicted-data CSV path for a given run date.
@@ -27,7 +34,7 @@ def _build_predicted_csv_path(run_date: date, data_root: str | Path, processed: 
     processed=True  -> data/processed/donnees_predites_clean_YYYY-MM-DD.csv
     processed=False -> data/raw/donnees_predites_YYYY-MM-DD.csv
     """
-    root = Path(data_root)
+    root = _resolve_data_root(data_root)
     day = run_date.isoformat()
     if processed:
         return root / "processed" / f"donnees_predites_clean_{day}.csv"

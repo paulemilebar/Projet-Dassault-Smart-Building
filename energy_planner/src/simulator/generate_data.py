@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from Predictor_agent.predictor_electricity_price import predict_next_24h_open_dpe, OpenDpeConfig
+from Predictor_agent.predictor_user_demand import UserDemandForecastAgent
 
 """
 TODO : For now we generate one day, maybe of interest to generate multiple days ? 
@@ -77,8 +78,15 @@ def generate_predicted_day(run_date: date, pv_agent=None, cfg: SimulationConfig 
 
     occupancy = occupancy_profile(h, rng)
 
-    pfixe = 0.8 + 0.03 * np.maximum(0.0, 22.0 - tout) + 0.18 * (tin < cfg.tmin_c)
-    pflex = 0.25 + 1.5 * occupancy
+    demand_agent = UserDemandForecastAgent()
+    demand_pred = demand_agent.predict_from_context(
+        run_date,
+        tout=tout,
+        tin=tin,
+        occupancy=occupancy,
+    )
+    pfixe = demand_pred["Pfixe_predit"].to_numpy()
+    pflex = demand_pred["Pflex_predit"].to_numpy()
     
     # use predictor agent for predicting electricity prices
     cfg = OpenDpeConfig(
