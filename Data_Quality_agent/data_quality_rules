@@ -1,0 +1,172 @@
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+class DataQualityAgent:
+
+    def __init__(self, config):
+        """
+        config : dictionnaire contenant les paramètres physiques et règles TODO
+        """
+        self.config = config
+
+    def ingest_data(self, df, source):
+        """
+        Ajoute les métadonnées de source et date d'ingestion
+        """
+        df = df.copy()
+
+        df["source"] = source
+        df["ingestion_date"] = datetime.now()
+
+        return df
+
+
+    def normalize_schema(self, df, mapping):
+        """
+        mapping = dict API_name -> internal_name
+        """
+        df = df.rename(columns=mapping)
+        return df
+
+    def convert_units(self, df):
+
+        if "P_fix" in df.columns:
+            df["P_fix"] = df["P_fix"] / 1000 if df["P_fix"].max() > 1000 else df["P_fix"]
+
+        if "P_flex" in df.columns:
+            df["P_flex"] = df["P_flex"] / 1000 if df["P_flex"].max() > 1000 else df["P_flex"]
+
+        return df
+
+
+    def detect_duplicates(self, df):
+
+        key = ["year", "month", "day", "hour"]
+
+        duplicates = df[df.duplicated(subset=key)]
+
+        df = df.drop_duplicates(subset=key)
+
+        return df, duplicates
+
+    def detect_time_gaps(self, df):
+
+        df = df.sort_values(["year","month","day","hour"])
+
+        df["timestamp"] = pd.to_datetime(
+            df[["year","month","day","hour"]]
+        )
+
+        expected = pd.date_range(
+            start=df["timestamp"].min(),
+            end=df["timestamp"].max(),
+            freq="H"
+        )
+
+        missing = expected.difference(df["timestamp"])
+
+        return missing
+
+    def impute_missing(self, df):
+
+        df = df.fillna(method="ffill")
+
+        df["IMPUTED"] = df.isna().any(axis=1)
+
+        return df
+
+
+    def physical_range_checks(self, df):
+
+        flags = []
+
+        for i,row in df.iterrows():
+
+            if "G" in row and row["G"] < 0:
+                df.loc[i,"G"] = 0
+                flags.append("OUT_OF_RANGE")
+
+            if "alpha_presence" in row:
+                if row["alpha_presence"] < 0 or row["alpha_presence"] > 1:
+                    df.loc[i,"alpha_presence"] = np.clip(row["alpha_presence"],0,1)
+                    flags.append("OUT_OF_RANGE")
+
+            if "E_bat" in row:
+                if row["E_bat"] > self.config["E_bat_max"]:
+                    df.loc[i,"E_bat"] = self.config["E_bat_max"]
+                    flags.append("OUT_OF_RANGE")
+
+        df["quality_flag"] = flags if flags else None
+
+        return df
+
+
+    def consistency_checks(self, df):
+
+        inconsistencies = []
+
+        for i,row in df.iterrows():
+
+            if "P_in" in row and "P_go" in row:
+                if row["P_in"] > 0 and row["P_go"] > 0:
+                    inconsistencies.append(i)
+
+            if "S" in row:
+                if row["S"] not in [0,1]:
+                    df.loc[i,"S"] = int(round(row["S"]))
+
+            if "G" in row and "PV" in row:
+                if row["G"] == 0 and row["PV"] > 0.1:
+                    df.loc[i,"quality_flag"] = "INCONSISTENT"
+
+        return df, inconsistencies
+
+    def add_metadata(self, df, source):
+
+        df["data_source"] = source
+        df["quality_version"] = "1.0"
+
+        return df
+
+    def get_clean_window(self, df, start, horizon=24):
+
+        df["timestamp"] = pd.to_datetime(df[["year","month","day","hour"]])
+
+        end = start + pd.Timedelta(hours=horizon)
+
+        clean_df = df[(df["timestamp"]>=start) & (df["timestamp"]<end)]
+
+        return clean_df
+
+
+    def get_history(self, df, days):
+
+        df["timestamp"] = pd.to_datetime(df[["year","month","day","hour"]])
+
+        cutoff = df["timestamp"].max() - pd.Timedelta(days=days)
+
+        history = df[df["timestamp"] >= cutoff]
+
+        return history
+
+def run_data_quality_pipeline(df, config, mapping=None):
+
+    agent = DataQualityAgent(config)
+
+    if mapping:
+        df = agent.normalize_schema(df, mapping)
+
+    df = agent.convert_units(df)
+
+    df, duplicates = agent.detect_duplicates(df)
+
+    missing_times = agent.detect_time_gaps(df)
+
+    df = agent.impute_missing(df)
+
+    df = agent.physical_range_checks(df)
+
+    df, inconsistencies = agent.consistency_checks(df)
+
+    return df
