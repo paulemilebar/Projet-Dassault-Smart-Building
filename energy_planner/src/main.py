@@ -1,12 +1,12 @@
 import argparse
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 from pathlib import Path
 
 from ingestion.load_predicted_inputs import load_predicted_inputs
 from state.load_state import load_current_state
-from simulator.generate_data import SimulationConfig, generate_and_save_day
+from simulator.generate_data import SimulationConfig, generate_and_save_day, simulate_historical_data
 from Predictor_agent.predictor_ppv import WeatherProvider, PhysicalPVPredictor, MLPVPredictor, HybridPVPredictor
 
 
@@ -102,7 +102,6 @@ def main() -> None:
     phys_predictor = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS) 
     ml_predictor = MLPVPredictor(historic_real_csv=HISTORIC_CSV_PATH)
     hybrid_pv_agent = HybridPVPredictor(phys_predictor, ml_predictor, weather_provider)
-    
     paths = generate_and_save_day(run_date=run_date, cfg=cfg, pv_agent=hybrid_pv_agent)
     predicted_inputs = load_predicted_inputs(run_date=run_date)
     state = load_current_state(run_date=run_date)
