@@ -38,7 +38,7 @@ def predict_pv_production(model, forecast_df: pd.DataFrame) -> pd.DataFrame:
     
     # On utilise np.clip pour s'assurer que le modèle ne sort jamais une puissance négative
     # (ce qui est physiquement impossible pour un panneau solaire)
-    result_df["PPV"] = np.round(np.clip(predictions, 0.0, None), 3)
+    result_df["PV"] = np.round(np.clip(predictions, 0.0, None), 3)
     
     return result_df
 

@@ -109,7 +109,7 @@ def generate_synthetic_history(
         frame = build_feature_frame(day, tout, tin, occupancy, irradiance, cfg=feature_cfg)
         frame["Pfixe"] = np.round(pfix, 6)
         frame["Pflex"] = np.round(pflex, 6)
-        frame["PPV"] = np.round(ppv, 3)
+        frame["PV"] = np.round(ppv, 3)
         rows.append(frame)
 
     return pd.concat(rows, ignore_index=True)
@@ -123,7 +123,7 @@ FEATURE_COLUMNS = [
     "Tout",
     "Tin",
     "G",
-    "PPV",
+    "PV",
     "occupancy",
     "heating_gap_outdoor",
     "below_tmin_flag",

@@ -66,7 +66,7 @@ def generate_predicted_day(run_date: date, pv_agent=None, cfg: SimulationConfig 
         tout = pv_forecast["Tout"].to_numpy()
         irradiance = pv_forecast["G"].to_numpy()
         # Conversion de Watts en kiloWatts
-        pv = pv_forecast["PV"].to_numpy() / 1000.0 
+        pv = pv_forecast["PV"].to_numpy()
         # On a toujours besoin de simuler la température intérieure (Tin)
         _, tin = temperature_profile(h, rng) 
     else:

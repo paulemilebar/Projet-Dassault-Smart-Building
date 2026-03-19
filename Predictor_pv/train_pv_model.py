@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestRegressor
 # ⚠️ Attention : J'utilise ici les noms de colonnes de ton nouveau dataset synthétique.
 # Si tu utilises l'ancien historique, remets ['heure', 'jour', 'mois', 'annee', 'Tout', 'G']
 PV_FEATURES = ["hour", "day", "month", "year", "Tout", "G"]
-PV_TARGET = "PPV"  # Ou "PV_reel" si tu pointes sur l'ancien fichier
+PV_TARGET = "PV"  # Ou "PV_reel" si tu pointes sur l'ancien fichier
 
 def train_pv_model(
     dataset_path: Path, 

@@ -7,7 +7,7 @@ from pathlib import Path
 from ingestion.load_predicted_inputs import load_predicted_inputs
 from state.load_state import load_current_state
 from simulator.generate_data import SimulationConfig, generate_and_save_day, simulate_historical_data
-from Predictor_agent.predictor_ppv import WeatherProvider, PhysicalPVPredictor, MLPVPredictor, HybridPVPredictor
+from Predictor_pv.hybrid_predictor_ppv import WeatherProvider, PhysicalPVPredictor, MLPVPredictor, HybridPVPredictor
 
 
 def parse_args() -> argparse.Namespace:
@@ -101,9 +101,13 @@ def main() -> None:
     args = parse_args()
     run_date = parse_run_date(args.run_date)
     cfg = SimulationConfig(seed=args.seed)
+    
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    DATASET_PATH = PROJECT_ROOT / "energy_planner" / "data" / "processed" / "synthetic_user_history.csv"
+    PV_MODEL_PATH = PROJECT_ROOT / "Predictor_pv" / "models" / "rf_pv_model.joblib"
     weather_provider = WeatherProvider(latitude=LAT, longitude=LON)
-    phys_predictor = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS) 
-    ml_predictor = MLPVPredictor(historic_real_csv=HISTORIC_CSV_PATH)
+    phys_predictor = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS)
+    ml_predictor = MLPVPredictor(dataset_csv=DATASET_PATH, model_path=PV_MODEL_PATH,dynamic_retrain=False)
     hybrid_pv_agent = HybridPVPredictor(phys_predictor, ml_predictor, weather_provider)
     paths = generate_and_save_day(run_date=run_date, cfg=cfg, pv_agent=hybrid_pv_agent)
     predicted_inputs = load_predicted_inputs(run_date=run_date)

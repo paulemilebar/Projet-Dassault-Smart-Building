@@ -55,7 +55,7 @@ class PhysicalPVPredictor:
         P_total = self.nb_panels * P_panel
         
         # ⚠️ MODIFICATION : On harmonise le nom de sortie
-        result_df['PPV'] = P_total/1000.0
+        result_df['PV'] = P_total/1000.0
         
         return result_df
 
@@ -71,7 +71,7 @@ class MLPVPredictor:
         
         self.last_train_date = None
         self.features = ['hour', 'day', 'month', 'year', 'Tout', 'G']
-        self.target = 'PPV'
+        self.target = 'PV'
 
     @property
     def is_trained(self) -> bool:
@@ -131,7 +131,7 @@ class MLPVPredictor:
         
         predictions = model.predict(X_pred)
         import numpy as np
-        result_df['PPV'] = np.round(np.maximum(0, predictions), 3)
+        result_df['PV'] = np.round(np.maximum(0, predictions), 3)
         return result_df
 
 
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     
     # Nouveaux chemins
     dataset_path = PROJECT_ROOT / "energy_planner" / "data" / "processed" / "synthetic_user_history.csv"
-    model_path = PROJECT_ROOT / "Predictor_agent" / "models" / "rf_pv_model.joblib"
+    model_path = PROJECT_ROOT / "Predictor_pv" / "models" / "rf_pv_model.joblib"
     
     # Instanciation
     weather_api = WeatherProvider(latitude=LAT, longitude=LON)

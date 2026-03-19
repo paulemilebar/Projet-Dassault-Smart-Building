@@ -6,7 +6,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 # Doit correspondre à ton entraînement
 PV_FEATURES = ["hour", "day", "month", "year", "Tout", "G"]
-PV_TARGET = "PPV"
+PV_TARGET = "PV"
 
 def evaluate_model(dataset_path: Path, model_path: Path):
     """
