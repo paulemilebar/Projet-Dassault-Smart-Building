@@ -26,7 +26,7 @@ if str(ROOT) not in sys.path:
 from Data_Quality_agent.validation import validate_predicted, validate_real
 
 from Predictor_agent.predictor_electricity_price import predict_next_24h_open_dpe, OpenDpeConfig
-# from Predictor_agent.predictor_user_demand import UserDemandForecastAgent
+from Predictor_demand.predictor_user_demand import UserDemandForecastAgent
 
 """
 TODO : For now we generate one day, maybe of interest to generate multiple days ? 
@@ -53,17 +53,30 @@ We fix the random seed for reproducibility. The generated data is validated and 
 """
 
 
-def generate_predicted_day(run_date: date, cfg: SimulationConfig = SimulationConfig()) -> pd.DataFrame:
+def generate_predicted_day(run_date: date, pv_agent=None, cfg: SimulationConfig = SimulationConfig()) -> pd.DataFrame:
     """"Generate the donnees_predites table for a given date based on the simulation configuration."""
     rng = np.random.default_rng(cfg.seed)
     df = build_time_index(run_date)
     h = df["heure"].to_numpy()
 
-    tout, tin = temperature_profile(h, rng)
-    irradiance = daylight_irradiance_w_m2(h, rng)
+    # --- NOUVELLE LOGIQUE D'INTÉGRATION DE L'AGENT PV ---
+    if pv_agent is not None:
+        # L'agent récupère la météo et prédit la production
+        pv_forecast = pv_agent.predict_for_day(run_date)
+        tout = pv_forecast["Tout"].to_numpy()
+        irradiance = pv_forecast["G"].to_numpy()
+        # Conversion de Watts en kiloWatts
+        pv = pv_forecast["PV"].to_numpy() / 1000.0 
+        # On a toujours besoin de simuler la température intérieure (Tin)
+        _, tin = temperature_profile(h, rng) 
+    else:
+        # --- ANCIENNE LOGIQUE (Fallback si aucun agent n'est fourni) ---
+        tout, tin = temperature_profile(h, rng)
+        irradiance = daylight_irradiance_w_m2(h, rng)
+        pv = np.clip(cfg.pv_kw_peak * irradiance / 1000.0, 0.0, cfg.pv_kw_peak)
+
     occupancy = occupancy_profile(h, rng)
 
-    pv = np.clip(cfg.pv_kw_peak * irradiance / 1000.0, 0.0, cfg.pv_kw_peak)
     demand_agent = UserDemandForecastAgent()
     demand_pred = demand_agent.predict_from_context(
         run_date,
@@ -205,8 +218,9 @@ def generate_and_save_day(
     run_date: date,
     cfg: SimulationConfig = SimulationConfig(),
     root_dir: str | Path = "energy_planner/data",
+    pv_agent=None
 ) -> dict[str, Path]:
-    predicted = generate_predicted_day(run_date=run_date, cfg=cfg)
+    predicted = generate_predicted_day(run_date=run_date, cfg=cfg, pv_agent=pv_agent)
     real = generate_real_day(run_date=run_date, predicted=predicted, cfg=cfg)
     raw_pred, raw_real, proc_pred, proc_real, hist_pred, hist_real = save_daily_csv(
         predicted=predicted,
