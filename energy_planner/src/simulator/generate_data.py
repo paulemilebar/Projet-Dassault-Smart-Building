@@ -26,7 +26,7 @@ if str(ROOT) not in sys.path:
 from Data_Quality_agent.validation import validate_predicted, validate_real
 
 from Predictor_agent.predictor_electricity_price import predict_next_24h_open_dpe, OpenDpeConfig
-# from Predictor_agent.predictor_user_demand import UserDemandForecastAgent
+from Predictor_demand.predictor_user_demand import UserDemandForecastAgent
 
 """
 TODO : For now we generate one day, maybe of interest to generate multiple days ? 
