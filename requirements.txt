@@ -10,7 +10,7 @@ plotly>=5.18
 # ── HTTP / external APIs ──────────────────────────────────────────────────────
 requests>=2.32
 
-# ── LLM summary (optional — pipeline falls back gracefully if missing) ────────
+# ── LLM summary ────────
 openai>=1.17
 
 # ── MILP optimiser ────────────────────────────────────────────────────────────
