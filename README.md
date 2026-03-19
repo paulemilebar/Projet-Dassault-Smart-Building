@@ -34,12 +34,29 @@ The generated files are the following :
 - Load optimizer inputs from predicted CSV.
 - Load system state from `energy_planner/config/parameters.yaml`.
 - Run MILP optimizer and print the 24h plan.
+- Optionally generate a natural-language summary of the optimizer result with an LLM.
 
 Command (from repository root):
 
 ```bash
 python energy_planner/src/main.py --run-date 2026-02-08 --seed 42
 ```
+
+To also generate a natural-language summary from the optimization result:
+
+```bash
+set OPENAI_API_KEY=your_key_here
+set OPENAI_MODEL=your_model_here
+python energy_planner/src/main.py --run-date 2026-02-08 --seed 42 --llm-summary
+```
+
+You can also override the model directly on the command line:
+
+```bash
+python energy_planner/src/main.py --run-date 2026-02-08 --seed 42 --llm-summary --llm-model your_model_here
+```
+
+If the OpenAI package, API key, or model name is not available, the pipeline falls back to a deterministic text summary built from the optimization metrics.
 
 ## How it works :
 

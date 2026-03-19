@@ -1,9 +1,14 @@
 import argparse
+import os
 from datetime import date, datetime
 
 import pandas as pd
 
 from ingestion.load_predicted_inputs import load_predicted_inputs
+from reporting.optimization_summary import (
+    build_optimization_summary_payload,
+    try_generate_llm_summary,
+)
 from state.load_state import load_current_state
 from simulator.generate_data import SimulationConfig, generate_and_save_day
 
@@ -21,6 +26,17 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
         help="Random seed for deterministic generation.",
+    )
+    parser.add_argument(
+        "--llm-summary",
+        action="store_true",
+        help="Generate a natural-language optimization summary with OpenAI when configured.",
+    )
+    parser.add_argument(
+        "--llm-model",
+        type=str,
+        default=None,
+        help="OpenAI model name used for the optimization summary. Overrides OPENAI_MODEL.",
     )
     return parser.parse_args()
 
@@ -100,6 +116,24 @@ def main() -> None:
     if plan_df is not None:
         print("\nOptimizer plan (first 6 rows):")
         print(plan_df.head(6).to_string(index=False))
+        if args.llm_summary:
+            payload = build_optimization_summary_payload(
+                predicted_inputs,
+                plan_df,
+                initial_battery_kwh=state["E_bat_0"],
+                battery_capacity_kwh=state["E_max"],
+            )
+            summary_text, summary_source = try_generate_llm_summary(
+                payload,
+                model=args.llm_model,
+            )
+            configured_model = args.llm_model or os.getenv("OPENAI_MODEL")
+            print("\nOptimization summary:")
+            print(summary_text)
+            print(
+                f"\nSummary source: {summary_source}"
+                + (f" ({configured_model})" if summary_source == "llm" and configured_model else "")
+            )
 
 
 if __name__ == "__main__":
