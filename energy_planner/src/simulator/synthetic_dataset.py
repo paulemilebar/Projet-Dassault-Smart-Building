@@ -22,7 +22,6 @@ for candidate in (PROJECT_ROOT, SRC_ROOT, SIMULATOR_ROOT):
 from profiles import build_time_index, occupancy_profile, temperature_profile, daylight_irradiance_w_m2
 from schema import SimulationConfig
 
-
 @dataclass(frozen=True)
 class DemandFeatureConfig:
     t_out_reference_c: float = 22.0
@@ -64,15 +63,20 @@ def compute_targets(
     tout: np.ndarray,
     tin: np.ndarray,
     occupancy: np.ndarray,
+    irradiance: np.ndarray, 
     *,
     sim_cfg: SimulationConfig = SimulationConfig(),
-) -> tuple[np.ndarray, np.ndarray]:
-    """ Calcule les cibles de demande fixe (pfix) et flexible (pflex) à partir des profils de température, notre modele doit 
-    apprendre à associer les features à ces targets."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """ Calcule les cibles de demande (pfix, pflex) et de production (ppv). """
+    
+    # 1. Cibles de demande
     pfix = 0.8 + 0.03 * np.maximum(0.0, 22.0 - tout) + 0.18 * (tin < sim_cfg.tmin_c)
     pflex = 0.25 + 1.5 * occupancy
-    return pfix.astype(float), pflex.astype(float)
-
+    
+    # 2. Cible de production PV (PPV) - Ta ligne exacte
+    ppv = np.clip(sim_cfg.pv_kw_peak * irradiance / 1000.0, 0.0, sim_cfg.pv_kw_peak)
+    
+    return pfix.astype(float), pflex.astype(float), ppv.astype(float)
 
 def generate_synthetic_history(
     start_date: date,
@@ -100,11 +104,12 @@ def generate_synthetic_history(
         hours = np.arange(24, dtype=int)
         tout, tin = temperature_profile(hours, rng)
         occupancy = occupancy_profile(hours, rng)
-        pfix, pflex = compute_targets(tout, tin, occupancy, sim_cfg=sim_cfg)
         irradiance = daylight_irradiance_w_m2(hours, rng)
+        pfix, pflex, ppv = compute_targets(tout, tin, occupancy, irradiance, sim_cfg=sim_cfg)
         frame = build_feature_frame(day, tout, tin, occupancy, irradiance, cfg=feature_cfg)
         frame["Pfixe"] = np.round(pfix, 6)
         frame["Pflex"] = np.round(pflex, 6)
+        frame["PPV"] = np.round(ppv, 3)
         rows.append(frame)
 
     return pd.concat(rows, ignore_index=True)
@@ -118,7 +123,41 @@ FEATURE_COLUMNS = [
     "Tout",
     "Tin",
     "G",
+    "PPV",
     "occupancy",
     "heating_gap_outdoor",
     "below_tmin_flag",
 ]
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+    import sys
+    
+    print("\n[*] Exécution directe de synthetic_dataset.py")
+    print("[*] Génération de la base de données synthétique (365 jours)...")
+    
+    # 1. Gestion propre des chemins
+    # __file__ = synthetic_dataset.py
+    # parent[0] = simulator | parent[1] = src | parent[2] = energy_planner
+    CURRENT_FILE = Path(__file__).resolve()
+    ENERGY_PLANNER_DIR = CURRENT_FILE.parents[2]
+    
+    OUTPUT_DIR = ENERGY_PLANNER_DIR / "data" / "processed"
+    OUTPUT_FILE = OUTPUT_DIR / "synthetic_user_history.csv"
+    
+    # On s'assure que le dossier de destination existe
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # 2. Paramétrage des dates
+    from datetime import date, timedelta
+    start_date = date.today() - timedelta(days=100)
+    
+    # 3. Appel de la fonction (qui est dans ce même fichier, donc pas besoin d'import !)
+    df = generate_synthetic_history(start_date=start_date, num_days=100)
+    
+    # 4. Sauvegarde
+    df.to_csv(OUTPUT_FILE, index=False)
+    
+    print(f"[+] Succès ! {len(df)} lignes générées.")
+    print(f"[+] Fichier sauvegardé ici : {OUTPUT_FILE}\n")

@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestRegressor
 # ⚠️ Attention : J'utilise ici les noms de colonnes de ton nouveau dataset synthétique.
 # Si tu utilises l'ancien historique, remets ['heure', 'jour', 'mois', 'annee', 'Tout', 'G']
 PV_FEATURES = ["hour", "day", "month", "year", "Tout", "G"]
-PV_TARGET = "PV_power_W"  # Ou "PV_reel" si tu pointes sur l'ancien fichier
+PV_TARGET = "PPV"  # Ou "PV_reel" si tu pointes sur l'ancien fichier
 
 def train_pv_model(
     dataset_path: Path, 
@@ -23,7 +23,7 @@ def train_pv_model(
     :param model_save_path: Chemin où sauvegarder le modèle entraîné (.joblib).
     :return: Le modèle entraîné.
     """
-    print(f"[*] Chargement des données d'entraînement depuis : {dataset_path}")
+    # print(f"[*] Chargement des données d'entraînement depuis : {dataset_path}")
     if not dataset_path.exists():
         raise FileNotFoundError(f"Le fichier {dataset_path} est introuvable.")
 
@@ -53,15 +53,15 @@ def train_pv_model(
     model_save_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, model_save_path)
     
-    print(f"[+] Modèle entraîné et sauvegardé avec succès sous : {model_save_path}")
+    # print(f"[+] Modèle entraîné et sauvegardé avec succès sous : {model_save_path}")
     
     return model
 
 if __name__ == "__main__":
 
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]
-    DATASET_PATH = PROJECT_ROOT / "energy_planner" / "data" / "synthetic_user_demand_history.csv"
-    MODEL_PATH = PROJECT_ROOT / "Predictor_agent" / "models" / "rf_pv_model.joblib"
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
+    DATASET_PATH = PROJECT_ROOT / "energy_planner" / "data" / "processed" / "synthetic_user_history.csv"
+    MODEL_PATH = PROJECT_ROOT / "Predictor_pv" / "models" / "rf_pv_model.joblib"
     
     try:
         train_pv_model(DATASET_PATH, MODEL_PATH)
