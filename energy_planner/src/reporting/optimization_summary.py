@@ -121,12 +121,12 @@ def _build_llm_prompt(payload: dict[str, Any]) -> str:
     regimes = payload["regime_hours"]
 
     return f"""
-Tu es un assistant energie pour smart building.
-Redige un resume executif en francais, clair et naturel, en 1 paragraphe court puis 3 puces maximum.
+Tu es un expert en gestion d'energie autonome dans les smart building.
+Redige une explication détaillé en francais, clair et naturel.
 Tu dois rester strictement fidele aux chiffres fournis et ne rien inventer.
 Mentionne explicitement les achats reseau P_in, les ventes reseau P_go, la batterie, le PV, le cout net et les heures de pics importantes.
 
-Chiffres a resumer:
+Chiffres a resumer mais en langage naturel. Donne l'avis d'un expert en énergie:
 - Demande servie: {totals["served_demand_kWh"]} kWh
 - Achat reseau P_in: {totals["grid_import_kWh"]} kWh
 - Vente reseau P_go: {totals["grid_export_kWh"]} kWh
@@ -156,6 +156,8 @@ def try_generate_llm_summary(
     payload: dict[str, Any],
     *,
     model: str | None = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
 ) -> tuple[str, str]:
     """
     Return (summary_text, source), where source is 'llm' or 'template'.
@@ -163,33 +165,42 @@ def try_generate_llm_summary(
     try:
         from openai import OpenAI
     except ImportError:
-        return build_rule_based_summary(payload), "template"
+        return build_rule_based_summary(payload), "template_missing_openai_package"
 
-    api_key = os.getenv("OPENAI_API_KEY")
+    resolved_api_key = api_key or os.getenv("OPENAI_API_KEY")
     model_name = model or os.getenv("OPENAI_MODEL")
-    if not api_key or not model_name:
-        return build_rule_based_summary(payload), "template"
+    resolved_base_url = base_url or os.getenv("OPENAI_BASE_URL")
+    if not resolved_api_key:
+        return build_rule_based_summary(payload), "template_missing_api_key"
+    if not model_name:
+        return build_rule_based_summary(payload), "template_missing_model"
 
-    client = OpenAI(api_key=api_key)
-    response = client.responses.create(
-        model=model_name,
-        input=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            "Tu rediges des resumes de resultats d'optimisation energie. "
-                            "Tu es precis, concis et tu n'inventes aucun chiffre."
-                        ),
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [{"type": "input_text", "text": _build_llm_prompt(payload)}],
-            },
-        ],
-    )
+    try:
+        client_kwargs: dict[str, Any] = {"api_key": resolved_api_key}
+        if resolved_base_url:
+            client_kwargs["base_url"] = resolved_base_url
+        client = OpenAI(**client_kwargs)
+        response = client.responses.create(
+            model=model_name,
+            input=[
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "Tu rédiges des résumés de résultats d'optimisation energie dans les smart buildings qui sont auto gérés énéergétiquement avec des panneaux photovoltaïques, une batterie et un achat au main grid et une revente. "
+                                "Tu es precis, concis et tu n'inventes aucun chiffre."
+                            ),
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": _build_llm_prompt(payload)}],
+                },
+            ],
+        )
+    except Exception:
+        return build_rule_based_summary(payload), "template_llm_error"
     return response.output_text.strip(), "llm"

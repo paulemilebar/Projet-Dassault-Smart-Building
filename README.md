@@ -57,18 +57,23 @@ pip install -r requirements.txt
 
 ### 4. (Optional) Set environment variables
 
-The LLM summary feature uses the OpenAI API. Set these before running if you want it:
+The LLM summary feature supports OpenAI-compatible APIs.
+For a free open-weight setup, you can use OpenRouter with `openrouter/free`.
+Create your own OpenRouter account, generate your own API key, and keep it local.
+Do not commit your API key to the repository.
 
 **Windows**
 ```bash
 set OPENAI_API_KEY=your_key_here
-set OPENAI_MODEL=gpt-4o
+set OPENAI_MODEL=openrouter/free
+set OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
 **macOS / Linux**
 ```bash
 export OPENAI_API_KEY=your_key_here
-export OPENAI_MODEL=gpt-4o
+export OPENAI_MODEL=openrouter/free
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
 If neither variable is set, the pipeline falls back to a deterministic text summary — no action needed.
@@ -145,7 +150,8 @@ To also generate a natural-language summary from the optimization result:
 
 ```bash
 set OPENAI_API_KEY=your_key_here
-set OPENAI_MODEL=your_model_here
+set OPENAI_MODEL=openrouter/free
+set OPENAI_BASE_URL=https://openrouter.ai/api/v1
 python energy_planner/src/main.py --run-date 2026-02-08 --seed 42 --llm-summary
 ```
 
@@ -156,6 +162,27 @@ python energy_planner/src/main.py --run-date 2026-02-08 --seed 42 --llm-summary 
 ```
 
 If the OpenAI package, API key, or model name is not available, the pipeline falls back to a deterministic text summary built from the optimization metrics.
+
+## LLM Summary In The Notebook
+
+The notebook `utils/dispatch_visualization_draft.ipynb` can also generate a natural-language dispatch summary.
+
+Recommended setup with OpenRouter:
+
+1. Create your own OpenRouter account.
+2. Generate your own API key.
+3. In the notebook, set:
+
+```python
+llm_base_url = "https://openrouter.ai/api/v1"
+llm_model = "openrouter/free"
+llm_api_key = "PUT_YOUR_OPENROUTER_API_KEY_HERE"
+```
+
+Important:
+
+- Each user should create and use their own key locally.
+
 
 ## How it works :
 
