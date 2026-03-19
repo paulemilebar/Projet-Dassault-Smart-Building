@@ -2,6 +2,105 @@
 
 Projet 3DS - Optimisation et agents IA pour la gestion de l'energie dans les smart buildings.
 
+---
+
+## Getting started
+
+### Prerequisites
+
+| Requirement | Minimum version | Notes |
+|---|---|---|
+| Python | 3.10 | 3.11 or 3.12 recommended |
+| IBM CPLEX | 22.1 | Only needed to run the optimizer — everything else works without it |
+
+---
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/paulemilebar/Projet-Dassault-Smart-Building.git
+cd Projet-Dassault-Smart-Building
+```
+
+---
+
+### 2. Create a virtual environment
+
+**Windows**
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+**macOS / Linux**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+You should see `(.venv)` at the start of your terminal prompt — that means the venv is active.
+
+---
+
+### 3. Install dependencies
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+> **CPLEX note** — `cplex` is listed in `requirements.txt` but it requires IBM CPLEX to be installed on your machine first.
+> If you don't have it, simply ignore the install error: the pipeline detects its absence and skips the optimizer step automatically.
+> Free academic licenses are available at [ibm.com/academic](https://www.ibm.com/academic).
+
+---
+
+### 4. (Optional) Set environment variables
+
+The LLM summary feature uses the OpenAI API. Set these before running if you want it:
+
+**Windows**
+```bash
+set OPENAI_API_KEY=your_key_here
+set OPENAI_MODEL=gpt-4o
+```
+
+**macOS / Linux**
+```bash
+export OPENAI_API_KEY=your_key_here
+export OPENAI_MODEL=gpt-4o
+```
+
+If neither variable is set, the pipeline falls back to a deterministic text summary — no action needed.
+
+---
+
+### 5. Train the demand model (first run only)
+
+The simulator depends on a pre-trained demand model. Generate and train it once before running the full pipeline:
+
+```bash
+python -m Predictor_demand.train_user_demand_model \
+  --train-end-date 2026-03-11 \
+  --num-train-days 90 \
+  --num-valid-days 10 \
+  --output-dataset energy_planner/data/processed/synthetic_user_demand_history.csv
+```
+
+This writes the model bundle to `Predictor_demand/models/user_demand_rf_bundle.joblib`.
+
+---
+
+### 6. Run the pipeline
+
+```bash
+python energy_planner/src/main.py --run-date 2026-03-19 --seed 42
+```
+
+That's it — the pipeline generates data, runs the optimizer, and prints the 24h plan.
+
+---
+
 ## MVP Data Simulator (current status)
 
 The simulator now generates 2 daily datasets (24 hourly rows each):

@@ -4,7 +4,7 @@ import pandas as pd
 
 from simulator.schema import PRED_COLUMNS, REAL_COLUMNS, SimulationConfig
 
-"""  
+"""
 Common validation for both predicted and real data tables:
     - Check for expected columns
     - Check for 24 rows (one per hour)

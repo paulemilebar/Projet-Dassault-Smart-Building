@@ -1,0 +1,21 @@
+# ── Core data / ML ────────────────────────────────────────────────────────────
+pandas>=2.3
+numpy>=1.24
+scikit-learn>=1.7
+joblib>=1.2
+
+# ── Visualisation ─────────────────────────────────────────────────────────────
+plotly>=5.18
+
+# ── HTTP / external APIs ──────────────────────────────────────────────────────
+requests>=2.32
+
+# ── LLM summary (optional — pipeline falls back gracefully if missing) ────────
+openai>=1.17
+
+# ── MILP optimiser ────────────────────────────────────────────────────────────
+# cplex requires a local IBM CPLEX installation (v22.1+).
+# Once CPLEX is installed, its Python binding is shipped with it.
+# See: https://www.ibm.com/docs/en/icos/22.1.2?topic=cplex-setting-up-python-api
+# If cplex is not available the optimizer step is skipped automatically.
+cplex>=22.1

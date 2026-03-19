@@ -16,9 +16,6 @@ from simulator.profiles import (
 )
 from simulator.schema import PRED_COLUMNS, REAL_COLUMNS, SimulationConfig
 from simulator.storage import save_daily_csv
-from simulator.validation import validate_predicted, validate_real
-
-
 ## TO DO : change that because there is a problem of path when laucing the simulation. QUICK FIX HERE:
 from pathlib import Path
 import sys
@@ -26,8 +23,10 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
+from Data_Quality_agent.validation import validate_predicted, validate_real
+
 from Predictor_agent.predictor_electricity_price import predict_next_24h_open_dpe, OpenDpeConfig
-from Predictor_agent.predictor_user_demand import UserDemandForecastAgent
+# from Predictor_agent.predictor_user_demand import UserDemandForecastAgent
 
 """
 TODO : For now we generate one day, maybe of interest to generate multiple days ? 
