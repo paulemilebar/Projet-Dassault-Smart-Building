@@ -1,3 +1,4 @@
 # energy_planner/data/
 __pycache__/
 *.pyc
+energy_planner/data/data.ipynb
