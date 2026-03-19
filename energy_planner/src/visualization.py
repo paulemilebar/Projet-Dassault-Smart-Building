@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -451,6 +452,65 @@ def save_dashboard_html(fig: go.Figure, output_path: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(path), include_plotlyjs="cdn")
     return path
+
+
+def add_natural_language_summary(
+    fig: go.Figure,
+    summary_text: str,
+    *,
+    source_label: str | None = None,
+) -> go.Figure:
+    """
+    Append a natural-language summary block below the dashboard.
+    """
+    if not summary_text or not summary_text.strip():
+        return fig
+
+    wrapped_lines: list[str] = []
+    for raw_line in summary_text.strip().splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("- ", "* ", "• ")):
+            bullet = stripped[:2]
+            content = stripped[2:].strip()
+            chunks = textwrap.wrap(content, width=95) or [content]
+            wrapped_lines.append(f"{bullet}{chunks[0]}")
+            wrapped_lines.extend(f"&nbsp;&nbsp;{chunk}" for chunk in chunks[1:])
+        else:
+            wrapped_lines.extend(textwrap.wrap(stripped, width=105) or [stripped])
+
+    clean_text = "<br>".join(wrapped_lines)
+    if source_label:
+        clean_text = (
+            f"<b>Natural-language summary</b> "
+            f"<span style='color:#64748b'>(source: {source_label})</span><br>{clean_text}"
+        )
+    else:
+        clean_text = f"<b>Natural-language summary</b><br>{clean_text}"
+
+    summary_line_count = max(len(wrapped_lines) + 1, 5)
+    current_height = fig.layout.height or 1220
+    current_bottom = fig.layout.margin.b if fig.layout.margin and fig.layout.margin.b is not None else 210
+
+    extra_space = 28 * summary_line_count
+    fig.update_layout(height=current_height + extra_space)
+    fig.update_layout(margin=dict(b=max(current_bottom, 210) + extra_space))
+    fig.add_annotation(
+        xref="paper",
+        yref="paper",
+        x=0.0,
+        y=-0.28,
+        showarrow=False,
+        align="left",
+        text=clean_text,
+        bgcolor="rgba(255,255,255,0.98)",
+        bordercolor="rgba(203,213,225,0.95)",
+        borderwidth=1,
+        borderpad=12,
+        font=dict(size=12, color="#0f172a"),
+    )
+    return fig
 
 
 def summarize_dispatch(viz_df: pd.DataFrame) -> dict[str, Any]:

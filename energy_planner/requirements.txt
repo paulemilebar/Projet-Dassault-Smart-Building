@@ -1,5 +1,5 @@
 pandas>=2.0
-numpy>=1.24
+numpy>=1.24,<2
 plotly>=5.18
 scikit-learn>=1.5
 openai>=1.0

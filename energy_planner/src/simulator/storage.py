@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+import sys
 
 import pandas as pd
 
-from simulator.validation import validate_predicted, validate_real
+_ROOT = Path(__file__).resolve().parents[3]
+if str(_ROOT) not in sys.path:
+    sys.path.append(str(_ROOT))
+
+from Data_Quality_agent.validation import validate_predicted, validate_real
 
 
 def save_daily_csv(
