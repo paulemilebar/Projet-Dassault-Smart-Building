@@ -22,7 +22,6 @@ def _bootstrap_paths() -> tuple[Path, Path]:
             sys.path.insert(0, candidate_str)
     return project_root, src_root
 
-OPENROUTER_API_KEY = "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"
 PROJECT_ROOT, SRC_ROOT = _bootstrap_paths()
 
 from ingestion.load_predicted_inputs import load_predicted_inputs
