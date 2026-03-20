@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -454,6 +455,119 @@ def save_dashboard_html(fig: go.Figure, output_path: str | Path) -> Path:
     return path
 
 
+def _summary_text_to_html(summary_text: str) -> str:
+    blocks: list[str] = []
+    list_items: list[str] = []
+
+    for raw_line in summary_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if list_items:
+                blocks.append("<ul>" + "".join(list_items) + "</ul>")
+                list_items = []
+            continue
+
+        if line.startswith(("- ", "* ")):
+            list_items.append(f"<li>{html.escape(line[2:].strip())}</li>")
+            continue
+
+        if list_items:
+            blocks.append("<ul>" + "".join(list_items) + "</ul>")
+            list_items = []
+        blocks.append(f"<p>{html.escape(line)}</p>")
+
+    if list_items:
+        blocks.append("<ul>" + "".join(list_items) + "</ul>")
+
+    if not blocks:
+        return "<p>No summary available.</p>"
+    return "".join(blocks)
+
+
+def save_dashboard_report_html(
+    fig: go.Figure,
+    output_path: str | Path,
+    *,
+    summary_text: str,
+    summary_source: str | None = None,
+    model_name: str | None = None,
+    title: str = "Dispatch Dashboard Report",
+) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    figure_html = fig.to_html(include_plotlyjs="cdn", full_html=False)
+    source_bits = []
+    if summary_source:
+        source_bits.append(f"Source: {html.escape(summary_source)}")
+    if model_name:
+        source_bits.append(f"Model: {html.escape(model_name)}")
+    source_html = " | ".join(source_bits)
+
+    report_html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{html.escape(title)}</title>
+  <style>
+    body {{
+      margin: 0;
+      background: #f8fafc;
+      color: #0f172a;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }}
+    .page {{
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }}
+    .card {{
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      overflow: hidden;
+    }}
+    .summary {{
+      margin-top: 20px;
+      padding: 24px 28px;
+      line-height: 1.65;
+    }}
+    .summary h2 {{
+      margin: 0 0 8px 0;
+      font-size: 1.4rem;
+    }}
+    .meta {{
+      margin: 0 0 16px 0;
+      color: #475569;
+      font-size: 0.95rem;
+    }}
+    .summary p {{
+      margin: 0 0 12px 0;
+    }}
+    .summary ul {{
+      margin: 0 0 12px 20px;
+      padding: 0;
+    }}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">{figure_html}</div>
+    <section class="card summary">
+      <h2>Resume naturel du dispatch</h2>
+      <p class="meta">{html.escape(source_html) if source_html else ""}</p>
+      {_summary_text_to_html(summary_text)}
+    </section>
+  </div>
+</body>
+</html>
+"""
+    path.write_text(report_html, encoding="utf-8")
+    return path
+
+
 def add_natural_language_summary(
     fig: go.Figure,
     summary_text: str,
@@ -487,7 +601,7 @@ def add_natural_language_summary(
             f"<span style='color:#64748b'>(source: {source_label})</span><br>{clean_text}"
         )
     else:
-        clean_text = f"<b>Natural-language summary</b><br>{clean_text}"
+        clean_text = f"<b>Summary and explanation from our experts</b><br>{clean_text}"
 
     summary_line_count = max(len(wrapped_lines) + 1, 5)
     current_height = fig.layout.height or 1220

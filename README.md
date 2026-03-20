@@ -183,6 +183,25 @@ Important:
 
 - Each user should create and use their own key locally.
 
+## Standalone Dispatch Visualization Script
+
+You can also generate the dashboard and the LLM summary from a regular Python script:
+
+```bash
+python utils/dispatch_visualization.py --run-date 2026-03-11
+```
+
+By default, the script:
+
+- runs the optimizer for the selected day
+- builds the Plotly dashboard
+- generates a natural-language LLM summary
+- saves a single HTML report with both the charts and the summary
+- opens the report in your browser
+
+You can also pass the API settings explicitly:
+
+NOTE : the LLM used is from openrouter and you need to SET MANUALLY THE API_KEY relative to your account.
 
 ## How it works :
 
