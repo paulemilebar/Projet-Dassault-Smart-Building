@@ -8,7 +8,7 @@ from ingestion.load_predicted_inputs import load_predicted_inputs
 from state.load_state import load_current_state
 from simulator.generate_data import SimulationConfig, generate_and_save_day, simulate_historical_data
 from Predictor_pv.hybrid_predictor_ppv import WeatherProvider, PhysicalPVPredictor, MLPVPredictor, HybridPVPredictor
-
+from baseline.calculator import BaselineCalculator
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate MVP daily smart-building datasets.")
@@ -125,6 +125,23 @@ def main() -> None:
     if plan_df is not None:
         print("\nOptimizer plan (first 6 rows):")
         print(plan_df.head(6).to_string(index=False))
+        calc = BaselineCalculator()
+        res_base = calc.compute_grid_only(predicted_inputs, state)
+        res_opt = calc.compute_optimizer_performance(plan_df, predicted_inputs, state)
+
+        print("\n" + "="*60)
+        print("📊 RÉSULTATS DE LA STRATÉGIE ÉNERGÉTIQUE")
+        print("="*60)
+        print(f"{'Indicateur':<25} | {'Baseline':<15} | {'Optimiseur':<15}")
+        print("-" * 60)
+        print(f"{'Coût financier (€)':<25} | {res_base['cost']:<15.2f} | {res_opt['cost']:<15.2f}")
+        print(f"{'Emissions (kg CO2)':<25} | {res_base['emissions']:<15.2f} | {res_opt['emissions']:<15.2f}")
+        print("-" * 60)
+        
+        economie = res_base['cost'] - res_opt['cost']
+        print(f"💰 Économie réalisée : {economie:.2f} €")
+        print(f"🌿 Réduction carbone : {res_base['emissions'] - res_opt['emissions']:.2f} kg CO2")
+        print("="*60)
 
 
 if __name__ == "__main__":

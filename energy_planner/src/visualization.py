@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -108,6 +109,7 @@ def create_dispatch_dashboard(
     viz_df: pd.DataFrame,
     *,
     title: str = "",
+    comparison_results: dict[str, Any] | None = None
 ) -> go.Figure:
     """
     Build an interactive multi-panel dashboard around optimizer decisions.
@@ -140,19 +142,69 @@ def create_dispatch_dashboard(
     ]
 
     fig = make_subplots(
-        rows=4,
-        cols=1,
+        rows=5, # Passé de 4 à 5
+        cols=3, # On utilise 3 colonnes pour les compteurs sur la première ligne
         shared_xaxes=True,
-        vertical_spacing=0.08,
-        row_heights=[0.34, 0.22, 0.22, 0.22],
-        specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": True}], [{"secondary_y": False}]],
+        vertical_spacing=0.05,
+        row_heights=[0.15, 0.30, 0.18, 0.18, 0.10], # La ligne 1 est plus petite
+        specs=[
+            [{"type": "indicator"}, {"type": "indicator"}, {"type": "indicator"}], # Ligne des compteurs
+            [{"secondary_y": False, "colspan": 3}, None, None],
+            [{"secondary_y": True, "colspan": 3}, None, None],
+            [{"secondary_y": True, "colspan": 3}, None, None],
+            [{"secondary_y": False, "colspan": 3}, None, None],
+        ],
         subplot_titles=(
+            "Key Performance Indicators", "", "", # Titres pour la ligne 1
             "Demand vs Dispatch",
             "Battery Dynamics",
             "Grid and Price Signals",
             "Operating Regimes",
         ),
     )
+
+    # --- NOUVEAU : AJOUT DES INDICATEURS DE COMPARAISON ---
+    if comparison_results:
+        # 1. Économie Financière (€)
+        fig.add_trace(
+            go.Indicator(
+                mode="number+delta",
+                value=comparison_results.get("opt_cost", 0),
+                delta={'reference': comparison_results.get("base_cost", 0), 'relative': True, 'position': "bottom", 'increasing': {'color': "#d1495b"}, 'decreasing': {'color': "#66a182"}},
+                title={"text": "Total Cost (€)<br><span style='font-size:0.8em;color:gray'>vs Baseline</span>"},
+                number={'prefix': "€", 'font': {'size': 40}},
+            ),
+            row=1, col=1
+        )
+
+        # 2. Émissions CO2 (kg)
+        fig.add_trace(
+            go.Indicator(
+                mode="number+delta",
+                value=comparison_results.get("opt_co2", 0),
+                delta={'reference': comparison_results.get("base_co2", 0), 'relative': True, 'position': "bottom", 'increasing': {'color': "#d1495b"}, 'decreasing': {'color': "#66a182"}},
+                title={"text": "CO2 Emissions (kg)<br><span style='font-size:0.8em;color:gray'>vs Baseline</span>"},
+                number={'suffix': " kg", 'font': {'size': 40}},
+            ),
+            row=1, col=2
+        )
+
+        # 3. Taux d'Autoconsommation (%)
+        # Calcul : (PV utilisé / PV total) * 100
+        pv_total = viz_df["PV"].sum()
+        pv_used = (viz_df["PV"] - viz_df["Pgo"]).sum()
+        self_suff = (pv_used / pv_total * 100) if pv_total > 0 else 0
+        
+        fig.add_trace(
+            go.Indicator(
+                mode="gauge+number",
+                value=self_suff,
+                title={"text": "Self-Consumption Rate"},
+                gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#edae49"}},
+                number={'suffix': "%", 'font': {'size': 35}},
+            ),
+            row=1, col=3
+        )
 
     fig.add_trace(
         go.Scatter(
@@ -163,7 +215,7 @@ def create_dispatch_dashboard(
             line=dict(color="#111111", width=3),
             hovertemplate="Hour %{x}<br>Served demand %{y:.2f} kW<extra></extra>",
         ),
-        row=1,
+        row=2,
         col=1,
     )
     fig.add_trace(
@@ -175,7 +227,7 @@ def create_dispatch_dashboard(
             opacity=0.65,
             hovertemplate="Hour %{x}<br>Fixed demand %{y:.2f} kW<extra></extra>",
         ),
-        row=1,
+        row=2,
         col=1,
     )
     fig.add_trace(
@@ -186,7 +238,7 @@ def create_dispatch_dashboard(
             marker_color="#c0d6df",
             hovertemplate="Hour %{x}<br>Flexible served %{y:.2f} kW<extra></extra>",
         ),
-        row=1,
+        row=2,
         col=1,
     )
     fig.add_trace(
@@ -200,7 +252,7 @@ def create_dispatch_dashboard(
             fillcolor="rgba(244, 162, 97, 0.28)",
             hovertemplate="Hour %{x}<br>PV %{y:.2f} kW<extra></extra>",
         ),
-        row=1,
+        row=2,
         col=1,
     )
     fig.add_trace(
@@ -211,7 +263,7 @@ def create_dispatch_dashboard(
             marker_color="#d1495b",
             hovertemplate="Hour %{x}<br>Grid import %{y:.2f} kW<extra></extra>",
         ),
-        row=1,
+        row=2,
         col=1,
     )
     fig.add_trace(
@@ -222,7 +274,7 @@ def create_dispatch_dashboard(
             marker_color="#00798c",
             hovertemplate="Hour %{x}<br>Battery discharge %{y:.2f} kW<extra></extra>",
         ),
-        row=1,
+        row=2,
         col=1,
     )
     fig.add_trace(
@@ -234,7 +286,7 @@ def create_dispatch_dashboard(
             customdata=viz_df["Pch"],
             hovertemplate="Hour %{x}<br>Battery charge %{customdata:.2f} kW<extra></extra>",
         ),
-        row=1,
+        row=2,
         col=1,
     )
     fig.add_trace(
@@ -246,7 +298,7 @@ def create_dispatch_dashboard(
             customdata=viz_df["Pgo"],
             hovertemplate="Hour %{x}<br>Grid export %{customdata:.2f} kW<extra></extra>",
         ),
-        row=1,
+        row=2,
         col=1,
     )
 
@@ -261,7 +313,7 @@ def create_dispatch_dashboard(
             fillcolor="rgba(13, 59, 102, 0.12)",
             hovertemplate="Hour %{x}<br>Battery %{y:.2f} kWh<extra></extra>",
         ),
-        row=2,
+        row=3,
         col=1,
         secondary_y=False,
     )
@@ -273,7 +325,7 @@ def create_dispatch_dashboard(
             marker_color="#8ecae6",
             hovertemplate="Hour %{x}<br>Charge %{y:.2f} kW<extra></extra>",
         ),
-        row=2,
+        row=3,
         col=1,
         secondary_y=True,
     )
@@ -286,7 +338,7 @@ def create_dispatch_dashboard(
             customdata=viz_df["Pdis"],
             hovertemplate="Hour %{x}<br>Discharge %{customdata:.2f} kW<extra></extra>",
         ),
-        row=2,
+        row=3,
         col=1,
         secondary_y=True,
     )
@@ -300,7 +352,7 @@ def create_dispatch_dashboard(
             customdata=viz_df["regime"],
             hovertemplate="Hour %{x}<br>Net grid %{y:.2f} kW<br>Regime %{customdata}<extra></extra>",
         ),
-        row=3,
+        row=4,
         col=1,
         secondary_y=False,
     )
@@ -313,7 +365,7 @@ def create_dispatch_dashboard(
             line=dict(color="#6d597a", width=2),
             hovertemplate="Hour %{x}<br>Buy price %{y:.3f} eur/kWh<extra></extra>",
         ),
-        row=3,
+        row=4,
         col=1,
         secondary_y=True,
     )
@@ -326,7 +378,7 @@ def create_dispatch_dashboard(
             line=dict(color="#b56576", width=2, dash="dot"),
             hovertemplate="Hour %{x}<br>Sell price %{y:.3f} eur/kWh<extra></extra>",
         ),
-        row=3,
+        row=4,
         col=1,
         secondary_y=True,
     )
@@ -364,11 +416,11 @@ def create_dispatch_dashboard(
                 ]
             ],
         ),
-        row=4,
+        row=5,
         col=1,
     )
 
-    for hour, regime in zip(hours, viz_df["regime"]):
+    '''for hour, regime in zip(hours, viz_df["regime"]):
         _, _, fill_color = _REGIME_STYLES[regime]
         fig.add_vrect(
             x0=hour - 0.5,
@@ -376,9 +428,9 @@ def create_dispatch_dashboard(
             fillcolor=fill_color,
             opacity=0.12,
             line_width=0,
-            row=1,
+            row=2,
             col=1,
-        )
+        )'''
 
     fig.update_layout(
         title=title,
@@ -407,18 +459,18 @@ def create_dispatch_dashboard(
         tickangle=28,
         tickfont=dict(size=11, color="#334155"),
         automargin=True,
-        row=4,
+        row=5,
         col=1,
     )
-    fig.update_xaxes(title_text="Hour of day", row=4, col=1)
-    fig.update_xaxes(showgrid=False, row=4, col=1)
+    fig.update_xaxes(title_text="Hour of day", row=5, col=1)
+    fig.update_xaxes(showgrid=False, row=5, col=1)
 
-    fig.update_yaxes(title_text="kW", row=1, col=1)
-    fig.update_yaxes(title_text="Battery energy (kWh)", row=2, col=1, secondary_y=False)
-    fig.update_yaxes(title_text="Battery power (kW)", row=2, col=1, secondary_y=True)
-    fig.update_yaxes(title_text="Net grid (kW)", row=3, col=1, secondary_y=False)
-    fig.update_yaxes(title_text="Price (eur/kWh)", row=3, col=1, secondary_y=True)
-    fig.update_yaxes(showticklabels=False, row=4, col=1)
+    fig.update_yaxes(title_text="kW", row=2, col=1)
+    fig.update_yaxes(title_text="Battery energy (kWh)", row=3, col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Battery power (kW)", row=3, col=1, secondary_y=True)
+    fig.update_yaxes(title_text="Net grid (kW)", row=4, col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Price (eur/kWh)", row=4, col=1, secondary_y=True)
+    fig.update_yaxes(showticklabels=False, row=5, col=1)
 
     fig.update_annotations(font=dict(size=16, color="#1f2937"))
 
@@ -451,6 +503,119 @@ def save_dashboard_html(fig: go.Figure, output_path: str | Path) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(path), include_plotlyjs="cdn")
+    return path
+
+
+def _summary_text_to_html(summary_text: str) -> str:
+    blocks: list[str] = []
+    list_items: list[str] = []
+
+    for raw_line in summary_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if list_items:
+                blocks.append("<ul>" + "".join(list_items) + "</ul>")
+                list_items = []
+            continue
+
+        if line.startswith(("- ", "* ")):
+            list_items.append(f"<li>{html.escape(line[2:].strip())}</li>")
+            continue
+
+        if list_items:
+            blocks.append("<ul>" + "".join(list_items) + "</ul>")
+            list_items = []
+        blocks.append(f"<p>{html.escape(line)}</p>")
+
+    if list_items:
+        blocks.append("<ul>" + "".join(list_items) + "</ul>")
+
+    if not blocks:
+        return "<p>No summary available.</p>"
+    return "".join(blocks)
+
+
+def save_dashboard_report_html(
+    fig: go.Figure,
+    output_path: str | Path,
+    *,
+    summary_text: str,
+    summary_source: str | None = None,
+    model_name: str | None = None,
+    title: str = "Dispatch Dashboard Report",
+) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    figure_html = fig.to_html(include_plotlyjs="cdn", full_html=False)
+    source_bits = []
+    if summary_source:
+        source_bits.append(f"Source: {html.escape(summary_source)}")
+    if model_name:
+        source_bits.append(f"Model: {html.escape(model_name)}")
+    source_html = " | ".join(source_bits)
+
+    report_html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{html.escape(title)}</title>
+  <style>
+    body {{
+      margin: 0;
+      background: #f8fafc;
+      color: #0f172a;
+      font-family: "Segoe UI", Arial, sans-serif;
+    }}
+    .page {{
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }}
+    .card {{
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      overflow: hidden;
+    }}
+    .summary {{
+      margin-top: 20px;
+      padding: 24px 28px;
+      line-height: 1.65;
+    }}
+    .summary h2 {{
+      margin: 0 0 8px 0;
+      font-size: 1.4rem;
+    }}
+    .meta {{
+      margin: 0 0 16px 0;
+      color: #475569;
+      font-size: 0.95rem;
+    }}
+    .summary p {{
+      margin: 0 0 12px 0;
+    }}
+    .summary ul {{
+      margin: 0 0 12px 20px;
+      padding: 0;
+    }}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">{figure_html}</div>
+    <section class="card summary">
+      <h2>Resume naturel du dispatch</h2>
+      <p class="meta">{html.escape(source_html) if source_html else ""}</p>
+      {_summary_text_to_html(summary_text)}
+    </section>
+  </div>
+</body>
+</html>
+"""
+    path.write_text(report_html, encoding="utf-8")
     return path
 
 
@@ -487,7 +652,7 @@ def add_natural_language_summary(
             f"<span style='color:#64748b'>(source: {source_label})</span><br>{clean_text}"
         )
     else:
-        clean_text = f"<b>Natural-language summary</b><br>{clean_text}"
+        clean_text = f"<b>Summary and explanation from our experts</b><br>{clean_text}"
 
     summary_line_count = max(len(wrapped_lines) + 1, 5)
     current_height = fig.layout.height or 1220
