@@ -99,8 +99,8 @@ def _compute_objective(
 
 def _optimizer_available() -> bool:
     try:
-        import cplex  # noqa: F401
-        from optimization.optimizer import optimize  # noqa: F401
+        import cplex 
+        from optimization.optimizer import optimize 
         return True
     except Exception:
         return False
