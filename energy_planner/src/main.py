@@ -7,11 +7,37 @@ from pathlib import Path
 from ingestion.load_predicted_inputs import load_predicted_inputs
 from state.load_state import load_current_state
 from simulator.generate_data import SimulationConfig, generate_and_save_day
+from prediction.predict_day import predict_day_inputs
+from online_learning.update_models import append_to_history, update_demand_models, update_pv_model
 from Predictor_agent.predictor_ppv import WeatherProvider, PhysicalPVPredictor, MLPVPredictor, HybridPVPredictor
+
+import sys
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+from Predictor_demand.predictor_user_demand import DEFAULT_MODEL_PATH as DEMAND_MODEL_PATH
+
+
+# --- Panel parameters ---
+P_STC = 3000
+BETA = -0.004
+NOCT = 45
+NB_PANELS = 1
+
+# --- Smart building location (Paris) ---
+LAT = 48.8566
+LON = 2.3522
+
+# --- Paths ---
+HISTORIC_CSV_PATH = Path("./energy_planner/data/historic/donnees_reelles_historique.csv")
+
+# --- Online learning window (in days; 1 day = 24 rows) ---
+WINDOW_DAYS = 14
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate MVP daily smart-building datasets.")
+    parser = argparse.ArgumentParser(description="Smart-building daily energy planning pipeline.")
     parser.add_argument(
         "--run-date",
         type=str,
@@ -35,8 +61,8 @@ def parse_run_date(raw: str | None) -> date:
 
 def _run_optimizer(predicted_inputs: pd.DataFrame, state: dict) -> pd.DataFrame | None:
     """
-    Exécute l'optimiseur MILP avec les donnees du pipeline.
-    Retourne un DataFrame planifie (24 lignes) ou None si non resolu.
+    Run the MILP optimizer. Returns a 24-row plan DataFrame or None if CPLEX
+    is unavailable.
     """
     try:
         from optimization.optimizer import optimize
@@ -81,47 +107,59 @@ def _run_optimizer(predicted_inputs: pd.DataFrame, state: dict) -> pd.DataFrame 
         )
     return pd.DataFrame(rows)
 
-# Paramètres du panneau
-P_STC = 3000  
-BETA = -0.004 
-NOCT = 45
-NB_PANELS = 1
 
-# Coordonnées du smart building (ex: Paris)
-LAT = 48.8566
-LON = 2.3522
-
-HISTORIC_CSV_PATH = Path("./energy_planner/data/historic/donnees_reelles_historique.csv")
-    
-    
 def main() -> None:
-    """ Point d'entrée principal du script. Gère la génération de données, le chargement 
-    des entrées et de l'état, et l'exécution de l'optimiseur. Affiche les résultats dans 
-    la console."""
+    """
+    Daily energy planning pipeline:
+      1. Predict tomorrow's inputs (ML models + APIs)
+      2. Save predicted CSV; simulate ground-truth real day; save real CSV
+      3. Load normalized optimizer inputs
+      4. Run MILP optimizer → 24h plan
+      5. Append real data to history; retrain demand + PV models (rolling window)
+    """
     args = parse_args()
     run_date = parse_run_date(args.run_date)
     cfg = SimulationConfig(seed=args.seed)
+
+    # --- Build PV agent ---
     weather_provider = WeatherProvider(latitude=LAT, longitude=LON)
-    phys_predictor = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS) 
+    phys_predictor = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS)
     ml_predictor = MLPVPredictor(historic_real_csv=HISTORIC_CSV_PATH)
     hybrid_pv_agent = HybridPVPredictor(phys_predictor, ml_predictor, weather_provider)
-    
-    paths = generate_and_save_day(run_date=run_date, cfg=cfg, pv_agent=hybrid_pv_agent)
+
+    # --- 1. Predict ---
+    print(f"\n=== Run date: {run_date.isoformat()} ===")
+    print("Step 1: predicting day inputs from ML models...")
+    predicted = predict_day_inputs(run_date=run_date, pv_agent=hybrid_pv_agent, cfg=cfg)
+
+    # --- 2. Simulate real day + save all CSVs ---
+    print("Step 2: simulating real day and saving CSVs...")
+    paths = generate_and_save_day(run_date=run_date, predicted=predicted, cfg=cfg)
+    for name, path in paths.items():
+        print(f"  {name}: {path}")
+
+    # --- 3. Load optimizer inputs ---
     predicted_inputs = load_predicted_inputs(run_date=run_date)
     state = load_current_state(run_date=run_date)
-
-    print(f"Run date: {run_date.isoformat()}")
-    for name, path in paths.items():
-        print(f"{name}: {path}")
     print("\nLoaded predicted inputs (optimizer contract):")
     print(predicted_inputs.head(3).to_string(index=False))
     print(f"... total rows: {len(predicted_inputs)}")
     print("\nLoaded state:")
     print(state)
+
+    # --- 4. Optimize ---
     plan_df = _run_optimizer(predicted_inputs, state)
     if plan_df is not None:
         print("\nOptimizer plan (first 6 rows):")
         print(plan_df.head(6).to_string(index=False))
+
+    # --- 5. Online learning update ---
+    print("\nStep 5: updating models on new real data...")
+    real_df = pd.read_csv(paths["raw_real_csv"])
+    append_to_history(real_df, HISTORIC_CSV_PATH)
+    update_demand_models(HISTORIC_CSV_PATH, DEMAND_MODEL_PATH, window_days=WINDOW_DAYS)
+    update_pv_model(HISTORIC_CSV_PATH, hybrid_pv_agent, window_days=WINDOW_DAYS)
+    print("Done.")
 
 
 if __name__ == "__main__":
