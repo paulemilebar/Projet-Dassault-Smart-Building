@@ -1,0 +1,1 @@
+from prediction.predict_day import predict_day_inputs
