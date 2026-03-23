@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 .env.*
+energy_planner/src/reporting/dispatch_visualization_parameters.py

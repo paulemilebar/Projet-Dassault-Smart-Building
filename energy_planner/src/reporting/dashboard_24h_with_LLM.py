@@ -1,10 +1,7 @@
 from __future__ import annotations
-
-import argparse
-import os
 import sys
 import webbrowser
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 
@@ -24,6 +21,8 @@ def _bootstrap_paths() -> tuple[Path, Path]:
 
 PROJECT_ROOT, SRC_ROOT = _bootstrap_paths()
 
+from energy_planner.src.reporting.dispatch_visualization_parameters import OPENROUTER_API_KEY
+
 from ingestion.load_predicted_inputs import load_predicted_inputs
 from main import _run_optimizer
 from reporting.optimization_summary import (
@@ -38,56 +37,18 @@ from visualization import (
     summarize_dispatch,
 )
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Generate the dispatch dashboard and LLM summary as a standalone HTML report."
-    )
-    parser.add_argument(
-        "--run-date",
-        type=str,
-        default=date.today().isoformat(),
-        help="Date in YYYY-MM-DD format.",
-    )
-    parser.add_argument(
-        "--llm-model",
-        type=str,
-        default="openrouter/free",
-        help="LLM model name.",
-    )
-    parser.add_argument(
-        "--llm-api-key",
-        type=str,
-        default=OPENROUTER_API_KEY,
-        help="OpenRouter/OpenAI-compatible API key.",
-    )
-    parser.add_argument(
-        "--llm-base-url",
-        type=str,
-        default="https://openrouter.ai/api/v1",
-        help="OpenAI-compatible base URL.",
-    )
-    parser.add_argument(
-        "--output-html",
-        type=str,
-        default=None,
-        help="Optional output HTML path.",
-    )
-    parser.add_argument(
-        "--no-open",
-        action="store_true",
-        help="Do not open the generated HTML in the browser.",
-    )
-    return parser.parse_args()
-
+RUN_DATE = date(2026, 3, 11)
+LLM_MODEL = "openrouter/free"
+LLM_BASE_URL = "https://openrouter.ai/api/v1"
+OUTPUT_HTML: str | None = None
+OPEN_REPORT_IN_BROWSER = True
 
 def main() -> None:
-    args = parse_args()
-    run_date = run_date = date(2026, 3, 11)
+    run_date = RUN_DATE
 
-    if not args.llm_api_key:
+    if not OPENROUTER_API_KEY or OPENROUTER_API_KEY == "PUT_YOUR_OPENROUTER_API_KEY_HERE":
         raise RuntimeError(
-            "Missing API key. Pass --llm-api-key or set OPENROUTER_API_KEY / OPENAI_API_KEY."
+            "Missing OpenRouter API key. Set it in utils/dispatch_visualization_parameters.py."
         )
 
     predicted_inputs = load_predicted_inputs(run_date=run_date)
@@ -107,10 +68,6 @@ def main() -> None:
     print("Dispatch metrics:")
     print(dispatch_metrics)
     
-    llm_base_url = "https://openrouter.ai/api/v1"
-    llm_model = "openrouter/free"
-    llm_api_key = "TO SET"
-
     summary_payload = build_optimization_summary_payload(
         predicted_inputs,
         plan_df,
@@ -119,9 +76,9 @@ def main() -> None:
     )
     summary_text, summary_source = try_generate_llm_summary(
         summary_payload,
-        model=llm_model,
-        api_key=llm_api_key,
-        base_url=llm_base_url,
+        model=LLM_MODEL,
+        api_key=OPENROUTER_API_KEY,
+        base_url=LLM_BASE_URL,
     )
 
     fig = create_dispatch_dashboard(
@@ -130,8 +87,8 @@ def main() -> None:
     )
 
     output_path = (
-        Path(args.output_html)
-        if args.output_html
+        Path(OUTPUT_HTML)
+        if OUTPUT_HTML
         else PROJECT_ROOT
         / "energy_planner"
         / "data"
@@ -144,14 +101,14 @@ def main() -> None:
         output_path,
         summary_text=summary_text,
         summary_source=summary_source,
-        model_name=args.llm_model,
+        model_name=LLM_MODEL,
         title=f"Dispatch Dashboard Report | {run_date.isoformat()}",
     )
     print(f"Saved report: {saved}")
     print("\nSummary:\n")
     print(summary_text)
 
-    if not args.no_open:
+    if OPEN_REPORT_IN_BROWSER:
         webbrowser.open(saved.resolve().as_uri())
 
 
