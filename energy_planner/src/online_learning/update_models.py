@@ -130,33 +130,41 @@ def update_pv_model(
     Force-retrain the ML component of *pv_predictor* (a HybridPVPredictor)
     on the last *window_days* days of real history.
 
-    The MLPVPredictor reads its data from its own historic_real_csv path.
-    We reset its last_train_date so the delta-train guard is bypassed and
-    a fresh fit is triggered immediately.
+    Compatible with the new MLPVPredictor API (Predictor_pv) where:
+    - is_trained is a @property (checks model_path.exists()) — cannot be reset directly
+    - dynamic_retrain flag controls whether retraining is allowed
+    - dataset_csv points to the training data source
 
     Args:
-        history_csv:   Path to the rolling real-data CSV — must match
-                       pv_predictor.ml.historic_real_csv.
-        pv_predictor:  HybridPVPredictor instance (from Predictor_agent).
-        window_days:   Rolling window in days passed to MLPVPredictor.train().
+        history_csv:   Path to the rolling real-data CSV.
+        pv_predictor:  HybridPVPredictor instance (from Predictor_pv).
+        window_days:   Rolling window in days used for retraining.
     """
     from datetime import date as _date
 
     ml = pv_predictor.ml  # MLPVPredictor
 
-    # Temporarily lower min_samples so it trains even on short histories.
-    original_min = ml.min_samples
-    ml.min_samples = min(original_min, window_days * 24)
+    # Save original values to restore after retraining.
+    original_dynamic_retrain = ml.dynamic_retrain
+    original_last_train_date = ml.last_train_date
+    original_dataset_csv     = ml.dataset_csv
+    original_min_samples     = ml.min_samples
 
-    # Bypass the delta-train guard.
+    # Override to force a fresh retrain on real history data.
+    ml.dynamic_retrain = True
     ml.last_train_date = None
+    ml.dataset_csv     = Path(history_csv)
+    ml.min_samples     = min(original_min_samples, window_days * 24)
 
     trained = ml.train(current_date=_date.today())
 
-    # Restore original min_samples.
-    ml.min_samples = original_min
+    # Restore all original values.
+    ml.dynamic_retrain = original_dynamic_retrain
+    ml.last_train_date = original_last_train_date
+    ml.dataset_csv     = original_dataset_csv
+    ml.min_samples     = original_min_samples
 
     if trained:
         print(f"[update_pv_model] ML PV model retrained on {window_days}-day window.")
     else:
-        print("[update_pv_model] Not enough PV history yet — using physical model.")
+        print("[update_pv_model] Not enough PV history yet — skipping.")
