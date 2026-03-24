@@ -54,8 +54,7 @@ class PhysicalPVPredictor:
 
         P_total = self.nb_panels * P_panel
         
-        # ⚠️ MODIFICATION : On harmonise le nom de sortie
-        result_df['PPV'] = P_total/1000.0
+        result_df['PV'] = P_total / 1000.0  # W → kW
         
         return result_df
 
@@ -71,7 +70,7 @@ class MLPVPredictor:
         
         self.last_train_date = None
         self.features = ['hour', 'day', 'month', 'year', 'Tout', 'G']
-        self.target = 'PPV'
+        self.target = 'PV'
 
     @property
     def is_trained(self) -> bool:
@@ -131,7 +130,7 @@ class MLPVPredictor:
         
         predictions = model.predict(X_pred)
         import numpy as np
-        result_df['PPV'] = np.round(np.maximum(0, predictions), 3)
+        result_df['PV'] = np.round(np.maximum(0, predictions), 3)
         return result_df
 
 
@@ -190,7 +189,7 @@ if __name__ == "__main__":
     
     # Nouveaux chemins
     dataset_path = PROJECT_ROOT / "energy_planner" / "data" / "processed" / "synthetic_user_history.csv"
-    model_path = PROJECT_ROOT / "Predictor_agent" / "models" / "rf_pv_model.joblib"
+    model_path = PROJECT_ROOT / "Predictor_pv" / "models" / "rf_pv_model.joblib"
     
     # Instanciation
     weather_api = WeatherProvider(latitude=LAT, longitude=LON)
@@ -230,10 +229,9 @@ if __name__ == "__main__":
     
     # Création d'un tableau comparatif clair
     df_comparatif = journee_ml[['time', 'Tout', 'G']].copy()
-    df_comparatif['PPV_ML'] = journee_ml['PPV']
-    df_comparatif['PPV_Physique'] = journee_phys['PPV']
-    
-    # On calcule même la différence entre les deux modèles !
-    df_comparatif['Ecart (W)'] = np.round(df_comparatif['PPV_ML'] - df_comparatif['PPV_Physique'], 2)
+    df_comparatif['PV_ML'] = journee_ml['PV']
+    df_comparatif['PV_Physique'] = journee_phys['PV']
+
+    df_comparatif['Ecart (kW)'] = np.round(df_comparatif['PV_ML'] - df_comparatif['PV_Physique'], 3)
     
     print(df_comparatif.to_string(index=False))
