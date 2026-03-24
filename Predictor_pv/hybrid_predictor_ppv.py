@@ -29,7 +29,7 @@ class WeatherProvider:
             'G': data['hourly']['shortwave_radiation']
         })
         
-        # ⚠️ MODIFICATION : Traduction en anglais pour matcher avec le dataset ML
+        # MODIFICATION : Traduction en anglais pour matcher avec le dataset ML
         df['hour'] = df['time'].dt.hour
         df['day'] = df['time'].dt.day
         df['month'] = df['time'].dt.month
@@ -93,12 +93,12 @@ class MLPVPredictor:
 
         # Déclenchement de l'entraînement
         if not self.dataset_csv.exists():
-            print(f"[ML Agent] ⚠️ Impossible d'entraîner : dataset introuvable.")
+            print(f"[ML Agent] Impossible d'entraîner : dataset introuvable.")
             return False
 
         df = pd.read_csv(self.dataset_csv)
         if len(df) < self.min_samples:
-            print(f"[ML Agent] ⚠️ Pas assez de données pour entraîner.")
+            print(f"[ML Agent] Pas assez de données pour entraîner.")
             return False
 
         print(f"[ML Agent] Entraînement du modèle RandomForest déclenché (Date : {current_date})...")

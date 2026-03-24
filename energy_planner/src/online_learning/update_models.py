@@ -121,6 +121,17 @@ def update_demand_models(
 # 3. PV model update
 # ---------------------------------------------------------------------------
 
+# Mapping from real-history CSV columns → MLPVPredictor feature/target names.
+_PV_REAL_COL_MAP = {
+    "heure":    "hour",
+    "jour":     "day",
+    "mois":     "month",
+    "annee":    "year",
+    "Tout_reel": "Tout",
+    "PV_reel":  "PPV",
+}
+
+
 def update_pv_model(
     history_csv: Path,
     pv_predictor,
@@ -130,41 +141,58 @@ def update_pv_model(
     Force-retrain the ML component of *pv_predictor* (a HybridPVPredictor)
     on the last *window_days* days of real history.
 
-    Compatible with the new MLPVPredictor API (Predictor_pv) where:
-    - is_trained is a @property (checks model_path.exists()) — cannot be reset directly
-    - dynamic_retrain flag controls whether retraining is allowed
-    - dataset_csv points to the training data source
+    The real-history CSV uses French column names; a temporary renamed CSV is
+    written so MLPVPredictor.train() can read the correct feature/target columns.
 
     Args:
-        history_csv:   Path to the rolling real-data CSV.
+        history_csv:   Path to the rolling real-data CSV (REAL_COLUMNS schema).
         pv_predictor:  HybridPVPredictor instance (from Predictor_pv).
         window_days:   Rolling window in days used for retraining.
     """
+    import tempfile
     from datetime import date as _date
+
+    history_csv = Path(history_csv)
+    if not history_csv.exists():
+        print("[update_pv_model] History CSV not found — skipping.")
+        return
+
+    # Take the rolling window and rename columns to match MLPVPredictor's schema.
+    df = pd.read_csv(history_csv)
+    window = df.tail(window_days * 24).rename(columns=_PV_REAL_COL_MAP)
 
     ml = pv_predictor.ml  # MLPVPredictor
 
-    # Save original values to restore after retraining.
+    if len(window) < ml.min_samples:
+        print(f"[update_pv_model] Not enough PV history ({len(window)} rows) — skipping.")
+        return
+
+    # Write renamed window to a temp CSV so train() can read it normally.
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w") as f:
+        tmp_path = Path(f.name)
+    window.to_csv(tmp_path, index=False)
+
+    # Save originals and override for a forced retrain.
     original_dynamic_retrain = ml.dynamic_retrain
     original_last_train_date = ml.last_train_date
     original_dataset_csv     = ml.dataset_csv
     original_min_samples     = ml.min_samples
 
-    # Override to force a fresh retrain on real history data.
     ml.dynamic_retrain = True
     ml.last_train_date = None
-    ml.dataset_csv     = Path(history_csv)
-    ml.min_samples     = min(original_min_samples, window_days * 24)
+    ml.dataset_csv     = tmp_path
+    ml.min_samples     = 1  # window already filtered above
 
     trained = ml.train(current_date=_date.today())
 
-    # Restore all original values.
+    # Restore all originals and clean up temp file.
     ml.dynamic_retrain = original_dynamic_retrain
     ml.last_train_date = original_last_train_date
     ml.dataset_csv     = original_dataset_csv
     ml.min_samples     = original_min_samples
+    tmp_path.unlink(missing_ok=True)
 
     if trained:
         print(f"[update_pv_model] ML PV model retrained on {window_days}-day window.")
     else:
-        print("[update_pv_model] Not enough PV history yet — skipping.")
+        print("[update_pv_model] Retraining failed — check history data.")
