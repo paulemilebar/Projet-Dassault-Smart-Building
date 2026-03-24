@@ -70,7 +70,7 @@ class MLPVPredictor:
         
         self.last_train_date = None
         self.features = ['hour', 'day', 'month', 'year', 'Tout', 'G']
-        self.target = 'PV'
+        self.target = 'PPV'  # column name in training CSV
 
     @property
     def is_trained(self) -> bool:
@@ -174,64 +174,89 @@ class HybridPVPredictor:
 if __name__ == "__main__":
     from pathlib import Path
     from datetime import date, timedelta
-    
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent # Adapte selon ton arborescence
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-    # Paramètres du panneau
-    P_STC = 3000  
-    BETA = -0.004 
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+    # --- Panel / location parameters ---
+    P_STC = 3000
+    BETA = -0.004
     NOCT = 45
     NB_PANELS = 1
-    
-    # Coordonnées du smart building (Paris)
     LAT = 48.8566
     LON = 2.3522
-    
-    # Nouveaux chemins
-    dataset_path = PROJECT_ROOT / "energy_planner" / "data" / "processed" / "synthetic_user_history.csv"
-    model_path = PROJECT_ROOT / "Predictor_pv" / "models" / "rf_pv_model.joblib"
-    
-    # Instanciation
-    weather_api = WeatherProvider(latitude=LAT, longitude=LON)
-    phys_agent = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS)
-    
-    # Le ML Agent utilise maintenant les deux chemins (données + modèle) et est figé
-    ml_agent = MLPVPredictor(
-        dataset_csv=dataset_path, 
-        model_path=model_path,
-        dynamic_retrain=False # <-- On fige le modèle !
-    )
-    
-    smart_agent = HybridPVPredictor(
-        physical_predictor=phys_agent, 
-        ml_predictor=ml_agent, 
-        weather_provider=weather_api
-    )
 
-    # Exécution de la prédiction pour demain
+    DATASET_PATH = PROJECT_ROOT / "energy_planner" / "data" / "processed" / "synthetic_user_history.csv"
+    MODEL_PATH   = PROJECT_ROOT / "Predictor_pv" / "models" / "rf_pv_model.joblib"
+
+    FEATURES = ['hour', 'day', 'month', 'year', 'Tout', 'G']
+    TARGET   = 'PPV'   # column name in the training CSV
+    VAL_DAYS = 30
+
+    # ------------------------------------------------------------------ #
+    # 1. METRICS EXPERIMENT — train / val split on historical dataset     #
+    # ------------------------------------------------------------------ #
+    print("=" * 60)
+    print("ML PV MODEL — TRAIN/VAL EVALUATION")
+    print("=" * 60)
+
+    df_full = pd.read_csv(DATASET_PATH)
+    val_size = VAL_DAYS * 24
+
+    if len(df_full) <= val_size:
+        print(f"[!] Dataset too small ({len(df_full)} rows) for a {VAL_DAYS}-day val split.")
+    else:
+        df_train = df_full.iloc[:-val_size].reset_index(drop=True)
+        df_val   = df_full.iloc[-val_size:].reset_index(drop=True)
+
+        print(f"Train : {len(df_train)} rows  |  Val : {len(df_val)} rows ({VAL_DAYS} days)")
+
+        rf = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+        rf.fit(df_train[FEATURES], df_train[TARGET])
+
+        y_true = df_val[TARGET].values
+        y_pred = np.maximum(0, rf.predict(df_val[FEATURES]))
+
+        mae  = mean_absolute_error(y_true, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+        r2   = r2_score(y_true, y_pred)
+
+        print(f"\nMAE  : {mae:.4f} kW  (avg error {mae * 1000:.1f} W/h)")
+        print(f"RMSE : {rmse:.4f} kW")
+        print(f"R²   : {r2:.4f}  (1.0 = perfect)")
+
+        df_val = df_val.copy()
+        df_val['pred'] = np.round(y_pred, 4)
+        df_val['abs_err'] = np.round(np.abs(y_true - y_pred), 4)
+        worst = df_val.nlargest(5, 'abs_err')[['month', 'day', 'hour', 'G', TARGET, 'pred', 'abs_err']]
+        print(f"\nTop-5 worst predictions on val set:")
+        print(worst.to_string(index=False))
+
+    # ------------------------------------------------------------------ #
+    # 2. FORECAST COMPARISON — ML vs Physical for tomorrow                #
+    # ------------------------------------------------------------------ #
+    print("\n" + "=" * 60)
+    print("TOMORROW FORECAST — ML vs PHYSICAL")
+    print("=" * 60)
+
+    weather_api = WeatherProvider(latitude=LAT, longitude=LON)
+    phys_agent  = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS)
+    ml_agent    = MLPVPredictor(dataset_csv=DATASET_PATH, model_path=MODEL_PATH, dynamic_retrain=False)
+    smart_agent = HybridPVPredictor(physical_predictor=phys_agent, ml_predictor=ml_agent,
+                                     weather_provider=weather_api)
+
     demain = date.today() + timedelta(days=1)
-    
-    # --- LA NOUVELLE LOGIQUE DE TEST ---
-    
-    # 1. On lance la prédiction en mode ML
-    previsions_ml = smart_agent.predict_for_day(demain, mode="ML")
-    
-    # 2. On lance la prédiction en mode Physique
+    previsions_ml   = smart_agent.predict_for_day(demain, mode="ML")
     previsions_phys = smart_agent.predict_for_day(demain, mode="Physique")
 
-    # --- AFFICHAGE COMPARATIF ---
-    print("\n--- RÉSULTATS DE LA PRÉDICTION (COMPARATIF) ---")
-    
-    # On filtre sur les heures de jour (8h - 18h)
-    filtre_jour = (previsions_ml['hour'] >= 8) & (previsions_ml['hour'] <= 18)
-    journee_ml = previsions_ml[filtre_jour]
+    filtre_jour  = (previsions_ml['hour'] >= 8) & (previsions_ml['hour'] <= 18)
+    journee_ml   = previsions_ml[filtre_jour]
     journee_phys = previsions_phys[filtre_jour]
-    
-    # Création d'un tableau comparatif clair
-    df_comparatif = journee_ml[['time', 'Tout', 'G']].copy()
-    df_comparatif['PV_ML'] = journee_ml['PV']
-    df_comparatif['PV_Physique'] = journee_phys['PV']
 
-    df_comparatif['Ecart (kW)'] = np.round(df_comparatif['PV_ML'] - df_comparatif['PV_Physique'], 3)
-    
-    print(df_comparatif.to_string(index=False))
+    df_cmp = journee_ml[['time', 'Tout', 'G']].copy()
+    df_cmp['PV_ML']      = journee_ml['PV'].values
+    df_cmp['PV_Physique'] = journee_phys['PV'].values
+    df_cmp['Ecart (kW)'] = np.round(df_cmp['PV_ML'] - df_cmp['PV_Physique'], 3)
+
+    print(df_cmp.to_string(index=False))
