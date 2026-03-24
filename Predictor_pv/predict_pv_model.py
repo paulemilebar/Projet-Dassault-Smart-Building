@@ -3,7 +3,6 @@ import numpy as np
 import joblib
 from pathlib import Path
 
-# ⚠️ Doit être EXACTEMENT identique à la liste du fichier train_pv_model.py
 PV_FEATURES = ["hour", "day", "month", "year", "Tout", "G"]
 
 def load_pv_model(model_path: Path):
@@ -27,7 +26,7 @@ def predict_pv_production(model, forecast_df: pd.DataFrame) -> pd.DataFrame:
     if missing_cols:
         raise ValueError(f"Impossible de prédire. Colonnes manquantes dans les prévisions : {missing_cols}")
 
-    # 2. Extraction des caractéristiques (Features)
+    # 2. Extraction des Features
     X_pred = forecast_df[PV_FEATURES]
 
     # 3. Prédiction
@@ -37,27 +36,20 @@ def predict_pv_production(model, forecast_df: pd.DataFrame) -> pd.DataFrame:
     result_df = forecast_df.copy()
     
     # On utilise np.clip pour s'assurer que le modèle ne sort jamais une puissance négative
-    # (ce qui est physiquement impossible pour un panneau solaire)
     result_df["PV"] = np.round(np.clip(predictions, 0.0, None), 3)
     
     return result_df
 
 
 if __name__ == "__main__":
-    # --- ZONE DE TEST LOCAL ---
-    # print("[*] Test de la fonction de prédiction...")
-    
-    # Ajuste ces chemins selon la racine de ton projet
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
     MODEL_PATH = PROJECT_ROOT / "Predictor_pv" / "models" / "rf_pv_model.joblib"
     
     try:
         # 1. Chargement du modèle
         my_model = load_pv_model(MODEL_PATH)
-        # print("[+] Modèle chargé avec succès.")
         
         # 2. Création d'un faux DataFrame de prévision (pour le test)
-        # On simule 3 heures différentes de la journée
         dummy_data = {
             "hour": [10, 13, 22],
             "day": [15, 15, 15],
@@ -71,8 +63,8 @@ if __name__ == "__main__":
         # 3. Prédiction
         df_result = predict_pv_production(my_model, df_forecast)
         
-        # print("\n[+] Résultats de la prédiction :")
-        # print(df_result[["hour", "G", "PPV"]])
+        print("\n[+] Résultats de la prédiction :")
+        print(df_result[["hour", "G", "PV"]])
         
     except Exception as e:
         print(f"[!] Erreur : {e}")

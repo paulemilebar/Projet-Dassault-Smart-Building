@@ -37,7 +37,7 @@ from simulator.generate_data import SimulationConfig, generate_and_save_day
 from ingestion.load_predicted_inputs import load_predicted_inputs
 from state.load_state import load_current_state
 from online_learning.update_models import append_to_history, update_demand_models, update_pv_model
-from Predictor_agent.predictor_ppv import (
+from Predictor_pv.hybrid_predictor_ppv import (
     WeatherProvider, PhysicalPVPredictor, MLPVPredictor, HybridPVPredictor,
 )
 from Predictor_demand.predictor_user_demand import DEFAULT_MODEL_PATH as DEMAND_MODEL_PATH
@@ -180,10 +180,13 @@ def simulate(
     """
     cfg = SimulationConfig(seed=seed)
 
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    DATASET_PATH = PROJECT_ROOT / "energy_planner" / "data" / "processed" / "synthetic_user_history.csv"
+    PV_MODEL_PATH = PROJECT_ROOT / "Predictor_pv" / "models" / "rf_pv_model.joblib"
     weather_provider = WeatherProvider(latitude=LAT, longitude=LON)
-    phys_predictor   = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS)
-    ml_predictor     = MLPVPredictor(historic_real_csv=HISTORIC_CSV)
-    hybrid_pv_agent  = HybridPVPredictor(phys_predictor, ml_predictor, weather_provider)
+    phys_predictor = PhysicalPVPredictor(p_stc=P_STC, beta=BETA, noct=NOCT, nb_panels=NB_PANELS)
+    ml_predictor = MLPVPredictor(dataset_csv=DATASET_PATH, model_path=PV_MODEL_PATH,dynamic_retrain=False)
+    hybrid_pv_agent = HybridPVPredictor(phys_predictor, ml_predictor, weather_provider)
 
     records = []
 

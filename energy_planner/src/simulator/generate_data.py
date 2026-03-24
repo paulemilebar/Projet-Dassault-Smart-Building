@@ -23,7 +23,6 @@ if str(ROOT) not in sys.path:
 
 from Data_Quality_agent.validation import validate_predicted, validate_real
 
-<<<<<<< HEAD
 from Predictor_agent.predictor_electricity_price import predict_next_24h_open_dpe, OpenDpeConfig
 from Predictor_demand.predictor_user_demand import UserDemandForecastAgent
 
@@ -111,8 +110,6 @@ def generate_predicted_day(run_date: date, pv_agent=None, cfg: SimulationConfig 
     validate_predicted(pred)
     return pred[PRED_COLUMNS]
 
-=======
->>>>>>> 5c1d6ea930d4b6bf1bef7e3e93b7442fbca97ba8
 
 def _simulate_battery_and_grid(
     demand_kw: np.ndarray,

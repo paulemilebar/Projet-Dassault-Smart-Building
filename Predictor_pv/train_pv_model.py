@@ -4,10 +4,8 @@ from pathlib import Path
 from sklearn.ensemble import RandomForestRegressor
 
 # --- CONFIGURATION DES COLONNES ---
-# ⚠️ Attention : J'utilise ici les noms de colonnes de ton nouveau dataset synthétique.
-# Si tu utilises l'ancien historique, remets ['heure', 'jour', 'mois', 'annee', 'Tout', 'G']
 PV_FEATURES = ["hour", "day", "month", "year", "Tout", "G"]
-PV_TARGET = "PV"  # Ou "PV_reel" si tu pointes sur l'ancien fichier
+PV_TARGET = "PV"
 
 def train_pv_model(
     dataset_path: Path, 
@@ -23,7 +21,7 @@ def train_pv_model(
     :param model_save_path: Chemin où sauvegarder le modèle entraîné (.joblib).
     :return: Le modèle entraîné.
     """
-    # print(f"[*] Chargement des données d'entraînement depuis : {dataset_path}")
+    print(f"[*] Chargement des données d'entraînement depuis : {dataset_path}")
     if not dataset_path.exists():
         raise FileNotFoundError(f"Le fichier {dataset_path} est introuvable.")
 
@@ -53,7 +51,7 @@ def train_pv_model(
     model_save_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, model_save_path)
     
-    # print(f"[+] Modèle entraîné et sauvegardé avec succès sous : {model_save_path}")
+    print(f"[+] Modèle entraîné et sauvegardé avec succès sous : {model_save_path}")
     
     return model
 

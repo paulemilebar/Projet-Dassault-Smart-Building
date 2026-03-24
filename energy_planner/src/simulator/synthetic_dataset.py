@@ -73,7 +73,16 @@ def compute_targets(
     pfix = 0.8 + 0.03 * np.maximum(0.0, 22.0 - tout) + 0.18 * (tin < sim_cfg.tmin_c)
     pflex = 0.25 + 1.5 * occupancy
     
-    # 2. Cible de production PV (PPV) - Ta ligne exacte
+    # 2. Cible de production PV
+    # Facteur de perte due à la température (ex: -0.4% par degré au-dessus de 25°C)
+    '''coeff_temp = 1.0 - 0.004 * (tout - 25.0)
+    coeff_temp = np.clip(coeff_temp, 0.8, 1.1) 
+
+    # Nouvelle formule physique + un peu de bruit
+    bruit = np.random.normal(1.0, 0.02, size=len(irradiance))
+    ppv_physique = (sim_cfg.pv_kw_peak * irradiance / 1000.0) * coeff_temp * bruit
+
+    ppv = np.clip(ppv_physique, 0.0, sim_cfg.pv_kw_peak)'''
     ppv = np.clip(sim_cfg.pv_kw_peak * irradiance / 1000.0, 0.0, sim_cfg.pv_kw_peak)
     
     return pfix.astype(float), pflex.astype(float), ppv.astype(float)

@@ -230,8 +230,8 @@ if __name__ == "__main__":
     
     # Création d'un tableau comparatif clair
     df_comparatif = journee_ml[['time', 'Tout', 'G']].copy()
-    df_comparatif['PPV_ML'] = journee_ml['PPV']
-    df_comparatif['PPV_Physique'] = journee_phys['PPV']
+    df_comparatif['PPV_ML'] = journee_ml['PV']
+    df_comparatif['PPV_Physique'] = journee_phys['PV']
     
     # On calcule même la différence entre les deux modèles !
     df_comparatif['Ecart (W)'] = np.round(df_comparatif['PPV_ML'] - df_comparatif['PPV_Physique'], 2)

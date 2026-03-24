@@ -36,7 +36,7 @@ def predict_day_inputs(
     pv_forecast = pv_agent.predict_for_day(run_date)
     tout = pv_forecast["Tout"].to_numpy()
     irradiance = pv_forecast["G"].to_numpy()
-    pv = pv_forecast["PV"].to_numpy() / 1000.0  # W → kW
+    pv = pv_forecast["PV"].to_numpy()
 
     # Indoor temperature: physics-based (no dedicated model yet)
     _, tin = temperature_profile(np.arange(24), rng)
