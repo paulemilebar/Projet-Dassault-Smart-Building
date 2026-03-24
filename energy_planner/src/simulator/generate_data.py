@@ -142,3 +142,30 @@ def generate_and_save_day(
         "historic_predicted_csv": hist_pred,
         "historic_real_csv": hist_real,
     }
+
+
+def simulate_historical_data(
+    start_date: date,
+    num_days: int,
+    cfg: SimulationConfig = SimulationConfig(),
+    root_dir: str | Path = "energy_planner/data",
+    pv_agent=None
+) -> None:
+    """
+    Simule et sauvegarde les données sur une période de plusieurs jours consécutifs.
+    Idéal pour générer rapidement un gros volume de données d'entraînement pour le ML.
+    """
+    from datetime import timedelta
+    
+    print(f"\n[*] Simulation historique sur {num_days} jours (à partir du {start_date})...")
+    
+    for i in range(num_days):
+        current_date = start_date + timedelta(days=i)
+        
+        generate_and_save_day(
+            run_date=current_date,
+            cfg=cfg,
+            root_dir=root_dir,
+            pv_agent=pv_agent
+        )
+        

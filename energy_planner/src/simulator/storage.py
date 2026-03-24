@@ -18,7 +18,7 @@ def save_daily_csv(
     real: pd.DataFrame,
     run_date: date,
     root_dir: str | Path = "energy_planner/data",
-) -> tuple[Path, Path, Path, Path]:
+) -> tuple[Path, Path, Path, Path, Path, Path]:
     validate_predicted(predicted)
     validate_real(real)
 
