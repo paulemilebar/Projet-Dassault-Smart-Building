@@ -9,14 +9,12 @@ import pandas as pd
 
 from simulator.profiles import (
     build_time_index,
-    daylight_irradiance_w_m2,
     occupancy_profile,
-    tariff_profile,
     temperature_profile,
 )
 from simulator.schema import PRED_COLUMNS, REAL_COLUMNS, SimulationConfig
 from simulator.storage import save_daily_csv
-## TO DO : change that because there is a problem of path when laucing the simulation. QUICK FIX HERE:
+
 from pathlib import Path
 import sys
 ROOT = Path(__file__).resolve().parents[3]
@@ -25,134 +23,40 @@ if str(ROOT) not in sys.path:
 
 from Data_Quality_agent.validation import validate_predicted, validate_real
 
-from Predictor_agent.predictor_electricity_price import predict_next_24h_open_dpe, OpenDpeConfig
-from Predictor_demand.predictor_user_demand import UserDemandForecastAgent
-
-"""
-TODO : For now we generate one day, maybe of interest to generate multiple days ? 
-TODO : Need to code some processing functions to create the processed CSV files from the raw data
-This module generates synthetic daily datasets for the smart building energy management.
-It creates two tables: 
-    - "donnees_predites" with predicted values 
-    - "donnees_reelles" with actual values.
-
-each table contains 24 rows (one per hour) and specific columns : 
-    - REAL_COLUMNS : [
-                    'heure', 'jour', 'mois', 'annee', 'tfrigo', 'Tmin', 'Tmax', 
-                    'Tout_reel', 'Tin_reel', 'G', 'alpha_presence_reel', 'PV_reel', 
-                    'Pfixe', 'Pflex_reel', 'Pin', 'Pgo', 'Ebat', 'S', 'Cbuy_reel', 'Csell_reel'
-                    ]
-
-    - PRED_COLUMNS : [
-                    'heure', 'jour', 'mois', 'annee', 'Tout', 'Tin', 'G', 'alpha_presence_predit',
-                    'PV', 'Pfixe_predit', 'Pflex_predit', 'Cbuy_predit', 'Csell_predit'
-                    ]
-
-The generation is based on configurable parameters and includes random noise for realism.
-We fix the random seed for reproducibility. The generated data is validated and saved as CSV files.
-"""
-
-
-def generate_predicted_day(run_date: date, pv_agent=None, cfg: SimulationConfig = SimulationConfig()) -> pd.DataFrame:
-    """"Generate the donnees_predites table for a given date based on the simulation configuration."""
-    rng = np.random.default_rng(cfg.seed)
-    df = build_time_index(run_date)
-    h = df["heure"].to_numpy()
-
-    # --- NOUVELLE LOGIQUE D'INTÉGRATION DE L'AGENT PV ---
-    if pv_agent is not None:
-        # L'agent récupère la météo et prédit la production
-        pv_forecast = pv_agent.predict_for_day(run_date)
-        tout = pv_forecast["Tout"].to_numpy()
-        irradiance = pv_forecast["G"].to_numpy()
-        # Conversion de Watts en kiloWatts
-        pv = pv_forecast["PV"].to_numpy() / 1000.0 
-        # On a toujours besoin de simuler la température intérieure (Tin)
-        _, tin = temperature_profile(h, rng) 
-    else:
-        # --- ANCIENNE LOGIQUE (Fallback si aucun agent n'est fourni) ---
-        tout, tin = temperature_profile(h, rng)
-        irradiance = daylight_irradiance_w_m2(h, rng)
-        pv = np.clip(cfg.pv_kw_peak * irradiance / 1000.0, 0.0, cfg.pv_kw_peak)
-
-    occupancy = occupancy_profile(h, rng)
-
-    demand_agent = UserDemandForecastAgent()
-    demand_pred = demand_agent.predict_from_context(
-        run_date,
-        tout=tout,
-        tin=tin,
-        occupancy=occupancy,
-    )
-    pfixe = demand_pred["Pfixe_predit"].to_numpy()
-    pflex = demand_pred["Pflex_predit"].to_numpy()
-    
-    # use predictor agent for predicting electricity prices
-    cfg = OpenDpeConfig(
-        tariff="EDF_bleu",
-        option="HC/HP",
-        beta_sell=0.6,
-        hc_hours_weekday=range(9, 18),
-    )
-    res = predict_next_24h_open_dpe(config=cfg)
-    cbuy = res.cbuy
-    csell = res.csell
-
-    pred = df.copy()
-    pred["Tout"] = np.round(tout, 3)
-    pred["Tin"] = np.round(tin, 3)
-    pred["G"] = np.round(irradiance, 3)
-    pred["alpha_presence_predit"] = np.round(occupancy, 4)
-    pred["PV"] = np.round(pv, 3)
-    pred["Pfixe_predit"] = np.round(pfixe, 3)
-    pred["Pflex_predit"] = np.round(pflex, 3)
-    pred["Cbuy_predit"] = np.round(cbuy, 4)
-    pred["Csell_predit"] = np.round(csell, 4)
-
-    validate_predicted(pred)
-    return pred[PRED_COLUMNS]
-
 
 def _simulate_battery_and_grid(
     demand_kw: np.ndarray,
     pv_kw: np.ndarray,
     cfg: SimulationConfig,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    
-    """ Simulate the battery state of charge (Ebat), grid import (Pin) and export (Pgo) 
+
+    """ Simulate the battery state of charge (Ebat), grid import (Pin) and export (Pgo)
     based on the demand and PV production."""
-    
+
     ebat = np.zeros(24, dtype=float)
     pin = np.zeros(24, dtype=float)
     pgo = np.zeros(24, dtype=float)
-    s = np.zeros(24, dtype=int) # Binary variable indicating if we import from the grid (1) or not (0)
+    s = np.zeros(24, dtype=int)
 
     e_prev = cfg.ebat_initial_kwh
 
     for t in range(24):
         net = demand_kw[t] - pv_kw[t]
 
-        if net <= 0: ## i.e we have excess PV production that can be used to charge the battery or sell to the grid
+        if net <= 0:
             surplus = -net
-            ## battery first, grid export second
-
-            # TODO
-            # Maybe we can be smarter and sell to the grid during high price hours 
-            # instead of charging the battery at maximum power ? 
-            # For now we just prioritize the battery for simplicity 
-
             charge = min(surplus, cfg.pch_max_kw, (cfg.ebat_max_kwh - e_prev) / cfg.eta_ch)
             e_now = min(cfg.ebat_max_kwh, e_prev + charge * cfg.eta_ch)
             sell = max(0.0, surplus - charge)
             pin[t] = 0.0
             pgo[t] = sell
-        else: ## we have a net demand that can be met by discharging the battery or importing from the grid
+        else:
             discharge = min(net, cfg.pdis_max_kw, e_prev * cfg.eta_dis)
             e_now = max(0.0, e_prev - discharge / cfg.eta_dis)
             import_grid = max(0.0, net - discharge)
             pin[t] = import_grid
             pgo[t] = 0.0
-            if import_grid > 1.8: 
+            if import_grid > 1.8:
                 s[t] = 1
 
         ebat[t] = e_now
@@ -166,13 +70,10 @@ def generate_real_day(
     predicted: pd.DataFrame,
     cfg: SimulationConfig = SimulationConfig(),
 ) -> pd.DataFrame:
-    
-    """ 
-    Generate the donnees_reelles table for a given date based on the predicted values and the simulation configuration.
-    We add random noise to the predicted values to create the real values
-    and we simulate the battery and grid behavior based on the real demand and PV production.
     """
-
+    Generate the donnees_reelles table for a given date.
+    Adds random noise to predicted values and simulates battery/grid behaviour.
+    """
     validate_predicted(predicted)
     rng = np.random.default_rng(cfg.seed + 1)
     real = predicted[["heure", "jour", "mois", "annee"]].copy()
@@ -216,11 +117,16 @@ def generate_real_day(
 
 def generate_and_save_day(
     run_date: date,
+    predicted: pd.DataFrame,
     cfg: SimulationConfig = SimulationConfig(),
     root_dir: str | Path = "energy_planner/data",
-    pv_agent=None
 ) -> dict[str, Path]:
-    predicted = generate_predicted_day(run_date=run_date, cfg=cfg, pv_agent=pv_agent)
+    """
+    Simulate ground-truth real data from predicted inputs and save all CSVs.
+
+    The predicted DataFrame must be produced upstream by predict_day_inputs()
+    (in energy_planner/src/prediction/predict_day.py).
+    """
     real = generate_real_day(run_date=run_date, predicted=predicted, cfg=cfg)
     raw_pred, raw_real, proc_pred, proc_real, hist_pred, hist_real = save_daily_csv(
         predicted=predicted,

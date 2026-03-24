@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 import os
 from typing import Any
-
 import pandas as pd
-
 from visualization import build_visualization_frame, summarize_dispatch
 
 
@@ -65,6 +62,10 @@ def build_optimization_summary_payload(
         "ratios": {
             "flex_served_pct": round(100.0 * flex_served / max(flex_requested, 1e-9), 1),
             "pv_self_consumed_pct": round(100.0 * self_consumed_pv / max(total_pv, 1e-9), 1),
+            "grid_import_share_pct": round(
+                100.0 * dispatch_summary["grid_import_kWh"] / max(dispatch_summary["total_served_demand_kWh"], 1e-9),
+                1,
+            ),
         },
         "peaks": {
             "grid_import": {
@@ -100,16 +101,21 @@ def build_rule_based_summary(payload: dict[str, Any]) -> str:
 
     return (
         "Resume optimisation sur 24h : "
-        f"le batiment couvre {totals['served_demand_kWh']:.2f} kWh de demande servie. "
-        f"Il achete {totals['grid_import_kWh']:.2f} kWh au reseau (cout {totals['energy_purchase_cost_eur']:.2f} EUR) "
-        f"et revend {totals['grid_export_kWh']:.2f} kWh (revenu {totals['energy_sale_revenue_eur']:.2f} EUR), "
+        f"le batiment sert {totals['served_demand_kWh']:.2f} kWh de demande. "
+        f"Seuls {totals['grid_import_kWh']:.2f} kWh sont achetes au reseau, soit "
+        f"{ratios['grid_import_share_pct']:.1f}% de la demande servie "
+        f"(cout {totals['energy_purchase_cost_eur']:.2f} EUR). "
+        f"Le batiment revend {totals['grid_export_kWh']:.2f} kWh "
+        f"(revenu {totals['energy_sale_revenue_eur']:.2f} EUR), "
         f"pour un cout net de {totals['net_energy_cost_eur']:.2f} EUR. "
-        f"La batterie charge {totals['battery_charge_kWh']:.2f} kWh, decharge {totals['battery_discharge_kWh']:.2f} kWh "
-        f"et passe de {totals['battery_start_kWh']:.2f} a {totals['battery_end_kWh']:.2f} kWh "
+        f"La batterie charge {totals['battery_charge_kWh']:.2f} kWh, decharge "
+        f"{totals['battery_discharge_kWh']:.2f} kWh et passe de "
+        f"{totals['battery_start_kWh']:.2f} a {totals['battery_end_kWh']:.2f} kWh "
         f"(pic a {totals['battery_peak_kWh']:.2f} kWh). "
-        f"La flexibilite servie represente {ratios['flex_served_pct']:.1f}% de la demande flexible demandee. "
-        f"Le pic d'achat reseau est atteint a {peaks['grid_import']['hour']:02d}h avec {peaks['grid_import']['value_kW']:.2f} kW, "
-        f"et le pic de vente a {peaks['grid_export']['hour']:02d}h avec {peaks['grid_export']['value_kW']:.2f} kW. "
+        f"La flexibilite servie represente {ratios['flex_served_pct']:.1f}% de la demande flexible. "
+        f"Le pic d'achat reseau est atteint a {peaks['grid_import']['hour']:02d}h avec "
+        f"{peaks['grid_import']['value_kW']:.2f} kW, et le pic de vente a "
+        f"{peaks['grid_export']['hour']:02d}h avec {peaks['grid_export']['value_kW']:.2f} kW. "
         f"Le regime dominant est '{dominant_regime}' sur {regimes.get(dominant_regime, 0)} heures."
     )
 
@@ -121,12 +127,12 @@ def _build_llm_prompt(payload: dict[str, Any]) -> str:
     regimes = payload["regime_hours"]
 
     return f"""
-Tu es un expert en gestion d'energie autonome dans les smart building.
-Redige une explication détaillé en francais, clair et naturel.
-Tu dois rester strictement fidele aux chiffres fournis et ne rien inventer.
-Mentionne explicitement les achats reseau P_in, les ventes reseau P_go, la batterie, le PV, le cout net et les heures de pics importantes.
+Tu es un expert en gestion d'energie autonome pour les smart building.
+Redige une explication détaillé en francais, clair et naturel de la gestion des sources d'énergie (PV, Batteries et acaht au fournisseur) pour la demande de l'utilisateur.
+Tu dois rester strictement fidele aux chiffres fournis et ne rien inventer. Fais attention aux points et virgules dans les Puissances, j'aimerais que tu arrondisses à l'unité près.
+Mentionne explicitement que le cout d'achat ne porte que sur l'energie importee P_in, pas sur toute la demande servie. Mentionne aussi les ventes P_go, la batterie, le PV, le cout net et les heures de pics importantes.
 
-Chiffres a resumer mais en langage naturel. Donne l'avis d'un expert en énergie:
+Chiffres a résumer mais en langage naturel. Explique comme si tu étais un expert en énergie:
 - Demande servie: {totals["served_demand_kWh"]} kWh
 - Achat reseau P_in: {totals["grid_import_kWh"]} kWh
 - Vente reseau P_go: {totals["grid_export_kWh"]} kWh
@@ -144,6 +150,7 @@ Chiffres a resumer mais en langage naturel. Donne l'avis d'un expert en énergie
 - Flexibilite coupee: {totals["flex_curtailed_kWh"]} kWh
 - Taux de service flexibilite: {ratios["flex_served_pct"]} %
 - Taux autoconsommation PV: {ratios["pv_self_consumed_pct"]} %
+- Part de la demande couverte par achat reseau: {ratios["grid_import_share_pct"]} %
 - Pic achat reseau: heure {peaks["grid_import"]["hour"]}, valeur {peaks["grid_import"]["value_kW"]} kW
 - Pic vente reseau: heure {peaks["grid_export"]["hour"]}, valeur {peaks["grid_export"]["value_kW"]} kW
 - Pic charge batterie: heure {peaks["battery_charge"]["hour"]}, valeur {peaks["battery_charge"]["value_kW"]} kW
@@ -189,8 +196,8 @@ def try_generate_llm_summary(
                         {
                             "type": "input_text",
                             "text": (
-                                "Tu rédiges des résumés de résultats d'optimisation energie dans les smart buildings qui sont auto gérés énéergétiquement avec des panneaux photovoltaïques, une batterie et un achat au main grid et une revente. "
-                                "Tu es precis, concis et tu n'inventes aucun chiffre."
+                                "Tu rédiges des résumés de résultats d'optimisation des sources d'energie dans les smart buildings qui sont auto gérés énergétiquement avec des panneaux photovoltaïques, une batterie et un achat au main grid et une revente si surplus. "
+                                "Tu es precis, concis et tu n'inventes aucuns chiffres. Fais également attention aux virgules et points et je veux que tu arrondisses à l'unité près."
                             ),
                         }
                     ],
