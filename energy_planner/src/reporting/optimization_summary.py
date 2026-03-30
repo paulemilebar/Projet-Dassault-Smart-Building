@@ -15,9 +15,10 @@ def build_optimization_summary_payload(
     initial_battery_kwh: float,
     battery_capacity_kwh: float,
     comparison_results: dict[str, Any] | None = None,
+    optimizer_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
-    Build a compact business summary from optimizer inputs and outputs.
+    Build a compact business summary from optimizer inputs and outputs
     """
     viz_df = build_visualization_frame(
         predicted_inputs,
@@ -114,6 +115,60 @@ def build_optimization_summary_payload(
             ),
         }
 
+    if optimizer_state:
+        payload["optimization_model"] = {
+            "horizon_hours": 24,
+            "objective": {
+                "sense": "minimize",
+                "expression": (
+                    "sum_t ((C_grid_buy[t] + C_emissions_grid) * Pin[t]"
+                    " - C_grid_sell[t] * Pgo[t]"
+                    " + C_emissions_PV * PV[t]"
+                    " - C_bat * Ebat[t]"
+                    " - C_L * P_flex[t] * S[t])"
+                ),
+                "notes": [
+                    "Le terme constant C_L * P_flex[t] de la puissance flexible demandée par l'utilisateur non servie est omis car il ne change pas l'optimum.",
+                    "Le terme -C_bat * Ebat[t] valorise un niveau de batterie eleve sur l'horizon.",
+                    "Le cout d'achat ne s'applique qu'a l'energie importee du main grid P_in.",
+                ],
+            },
+            "variables": {
+                "Pin": f"Puissance importée du main grid dans [0, {optimizer_state['P_g_max_import']}]",
+                "Pgo": f"Puissance exportée (vendue) du main grid dans [0, {optimizer_state['P_g_max_export']}]",
+                "PV": "Production Photo Voltaïque utilisée, continue dans [0, PV_max[t]]",
+                "Pch": f"Charge de la batterie dans [0, {min(optimizer_state['P_ch_max'], optimizer_state['P_dis_max'])}]",
+                "Pdis": f"Décharge de la batterie dans [0, {min(optimizer_state['P_ch_max'], optimizer_state['P_dis_max'])}]",
+                "Ebat": f"Energie batterie continue dans [0, {battery_capacity_kwh}]",
+                "S": "Variable binaire de service de la charge flexible (1 = servie, 0 = coupee)",
+                "A": "Variable binaire d'activation décharge batterie",
+                "B": "Variable binaire d'activation charge batterie",
+            },
+            "constraints": [
+                "Equilibre de puissance horaire: PV[t] + Pdis[t] + Pin[t] = P_fixed[t] + S[t] * P_flex[t] + Pch[t] + Pgo[t].",
+                f"Etat initial batterie: Ebat[0] = {round(float(initial_battery_kwh), 3)} + Pch[0] - Pdis[0].",
+                "Dynamique batterie pour t >= 1: Ebat[t] = Ebat[t-1] + Pch[t] - Pdis[t].",
+                "Activation décharge: Pdis[t] <= P_bat_max * A[t].",
+                "Activation charge: Pch[t] <= P_bat_max * B[t].",
+                f"Disponibilite energie au depart: Pdis[0] <= {round(float(initial_battery_kwh), 3)}.",
+                f"Capacite restante au depart: Pch[0] <= {round(float(battery_capacity_kwh - initial_battery_kwh), 3)}.",
+                "Disponibilite decharge pour t >= 1: Pdis[t] <= Ebat[t-1].",
+                f"Capacite batterie pour t >= 1: Pch[t] + Ebat[t-1] <= {round(float(battery_capacity_kwh), 3)}.",
+                "Non simultaneite batterie: A[t] + B[t] <= 1.",
+            ],
+            "parameters": {
+                "C_L": optimizer_state["C_L"],
+                "C_bat": optimizer_state["C_bat"],
+                "C_emissions_grid": optimizer_state["C_emissions_grid"],
+                "C_emissions_PV": optimizer_state["C_emissions_PV"],
+                "P_g_max_import": optimizer_state["P_g_max_import"],
+                "P_g_max_export": optimizer_state["P_g_max_export"],
+                "E_bat_max": battery_capacity_kwh,
+                "P_bat_max": min(optimizer_state["P_ch_max"], optimizer_state["P_dis_max"]),
+                "E_bat_init": initial_battery_kwh,
+            },
+        }
+
     return payload
 
 
@@ -129,31 +184,31 @@ def build_rule_based_summary(payload: dict[str, Any]) -> str:
     dominant_regime = max(regimes, key=regimes.get) if regimes else "Balanced"
 
     summary = (
-        "Resume optimisation sur 24h : "
-        f"le batiment sert {totals['served_demand_kWh']:.2f} kWh de demande. "
-        f"Seuls {totals['grid_import_kWh']:.2f} kWh sont achetes au reseau, soit "
+        "Resumé de l'optimisation sur 24h : "
+        f"Le batiment sert au total {totals['served_demand_kWh']:.2f} kWh de puissance demandée par l'utilisateur. "
+        f"Seuls {totals['grid_import_kWh']:.2f} kWh sont achetés au réseau, soit "
         f"{ratios['grid_import_share_pct']:.1f}% de la demande servie "
         f"(cout {totals['energy_purchase_cost_eur']:.2f} EUR). "
-        f"Le batiment revend {totals['grid_export_kWh']:.2f} kWh "
-        f"(revenu {totals['energy_sale_revenue_eur']:.2f} EUR), "
+        f"Le smart building revend {totals['grid_export_kWh']:.2f} kWh "
+        f"(revenu {totals['energy_sale_revenue_eur']:.2f} EUR) au main grid, "
         f"pour un cout net de {totals['net_energy_cost_eur']:.2f} EUR. "
-        f"La batterie charge {totals['battery_charge_kWh']:.2f} kWh, decharge "
+        f"Au total, sur 24h, la batterie charge {totals['battery_charge_kWh']:.2f} kWh, decharge "
         f"{totals['battery_discharge_kWh']:.2f} kWh et passe de "
         f"{totals['battery_start_kWh']:.2f} a {totals['battery_end_kWh']:.2f} kWh "
-        f"(pic a {totals['battery_peak_kWh']:.2f} kWh). "
-        f"La flexibilite servie represente {ratios['flex_served_pct']:.1f}% de la demande flexible. "
-        f"Le pic d'achat reseau est atteint a {peaks['grid_import']['hour']:02d}h avec "
-        f"{peaks['grid_import']['value_kW']:.2f} kW, et le pic de vente a "
+        f"(avec un pic à {totals['battery_peak_kWh']:.2f} kWh). "
+        f"La flexibilite servie représente {ratios['flex_served_pct']:.1f}% de la demande flexible. "
+        f"Le pic d'achat réseau est atteint a {peaks['grid_import']['hour']:02d}h avec "
+        f"{peaks['grid_import']['value_kW']:.2f} kW, et le pic de vente à "
         f"{peaks['grid_export']['hour']:02d}h avec {peaks['grid_export']['value_kW']:.2f} kW. "
-        f"Le regime dominant est '{dominant_regime}' sur {regimes.get(dominant_regime, 0)} heures."
+        f"Le régime dominant est '{dominant_regime}' sur {regimes.get(dominant_regime, 0)} heures."
     )
 
     if comparison:
         summary += (
-            f" Par rapport a la baseline, le cout passe de {comparison['baseline_cost_eur']:.2f} EUR "
-            f"a {comparison['optimizer_cost_eur']:.2f} EUR "
+            f" Par rapport a la baseline, le coût passe de {comparison['baseline_cost_eur']:.2f} EUR initialement (sans PV, batteries et optimisation)"
+            f"à {comparison['optimizer_cost_eur']:.2f} EUR "
             f"({comparison['cost_delta_eur']:.2f} EUR, {comparison['cost_delta_pct']:.1f}%). "
-            f"Les emissions passent de {comparison['baseline_co2_kg']:.2f} kgCO2 "
+            f"Les émissions, quant à elles, passent de {comparison['baseline_co2_kg']:.2f} kgCO2 "
             f"a {comparison['optimizer_co2_kg']:.2f} kgCO2 "
             f"({comparison['co2_delta_kg']:.2f} kgCO2, {comparison['co2_delta_pct']:.1f}%)."
         )
@@ -167,13 +222,14 @@ def _build_llm_prompt(payload: dict[str, Any]) -> str:
     peaks = payload["peaks"]
     regimes = payload["regime_hours"]
     comparison = payload.get("comparison")
+    optimization_model = payload.get("optimization_model")
 
     lines = [
         "Tu es un expert en gestion d'energie autonome pour les smart building.",
-        "Redige une explication detaillee en francais, claire et naturelle de la gestion des sources d'energie (PV, batteries et achat au fournisseur) pour la demande de l'utilisateur.",
+        "Redige une explication détaillée en francais, claire et naturelle de la gestion des sources d'energie (PV, batteries et achat au fournisseur) pour la demande de l'utilisateur.",
         "Tu dois rester strictement fidele aux chiffres fournis et ne rien inventer. Fais attention aux points et virgules dans les puissances, et arrondis a l'unite pres.",
         "Mentionne explicitement que le cout d'achat ne porte que sur l'energie importee P_in, pas sur toute la demande servie. Mentionne aussi les ventes P_go, la batterie, le PV, le cout net et les heures de pics importantes.",
-        "Si des valeurs de comparaison baseline sont fournies, integre-les explicitement pour comparer les resultats actuels de l'optimiseur a cette baseline.",
+        "Si des valeurs de comparaison baseline sont fournies, intègre-les explicitement pour comparer les resultats actuels de l'optimiseur a cette baseline afin de souligner les gains en argent et émissions de gaz à effet de serre de cette gestion d'énergie optimisée comparée à une baseline d'un bâtiment classique.",
         "",
         "Chiffres a resumer mais en langage naturel. Explique comme si tu etais un expert en energie:",
         f"- Demande servie: {totals['served_demand_kWh']} kWh",
@@ -204,13 +260,45 @@ def _build_llm_prompt(payload: dict[str, Any]) -> str:
     if comparison:
         lines.extend(
             [
-                "- Reference baseline pour comparer les resultats actuels de l'optimiseur:",
+                "- Réference baseline pour comparer les resultats actuels de l'optimiseur:",
                 f"  cout baseline: {comparison['baseline_cost_eur']} EUR",
                 f"  cout optimiseur: {comparison['optimizer_cost_eur']} EUR",
                 f"  ecart cout optimiseur - baseline: {comparison['cost_delta_eur']} EUR ({comparison['cost_delta_pct']} %)",
                 f"  emissions baseline: {comparison['baseline_co2_kg']} kgCO2",
                 f"  emissions optimiseur: {comparison['optimizer_co2_kg']} kgCO2",
                 f"  ecart emissions optimiseur - baseline: {comparison['co2_delta_kg']} kgCO2 ({comparison['co2_delta_pct']} %)",
+            ]
+        )
+
+    if optimization_model:
+        lines.extend(
+            [
+                "",
+                "Tu dois aussi fournir dans ton résumé une explication du modèle d'optimisation. C'est à dire pourquoi l'optimiseur a finalement choisi de renvoyer ces valeurs optimales au regards des contraintes qu'il avait et de la fonction objectif. Modele d'optimisation a expliquer dans le resume:",
+                f"- Horizon: {optimization_model['horizon_hours']} heures",
+                f"- Fonction objectif: {optimization_model['objective']['sense']} {optimization_model['objective']['expression']}",
+                "- Notes sur l'objectif:",
+            ]
+        )
+        lines.extend(f"  {note}" for note in optimization_model["objective"]["notes"])
+        lines.append("- Variables de decision:")
+        lines.extend(
+            f"  {name}: {description}"
+            for name, description in optimization_model["variables"].items()
+        )
+        lines.append("- Contraintes:")
+        lines.extend(f"  {constraint}" for constraint in optimization_model["constraints"])
+        lines.append("- Parametres du modele:")
+        lines.extend(
+            f"  {name}: {value}"
+            for name, value in optimization_model["parameters"].items()
+        )
+        lines.extend(
+            [
+                "",
+                "Dans ton resumé, explique aussi pourquoi ces contraintes conduisent aux décisions observees"
+                " (imports reseau, export PV, charge/decharge batterie, service ou non de la flexibilite),"
+                " toujours sans inventer de chiffres ni de regles absentes de ce modele.",
             ]
         )
 
@@ -225,7 +313,7 @@ def try_generate_llm_summary(
     base_url: str | None = None,
 ) -> tuple[str, str]:
     """
-    Return (summary_text, source), where source is 'llm' or 'template'.
+    Return (summary_text, source), where source is 'llm' or 'template'
     """
     try:
         from openai import OpenAI
@@ -246,10 +334,10 @@ def try_generate_llm_summary(
     client = OpenAI(**client_kwargs)
 
     system_prompt = (
-        "Tu rediges des resumes de resultats d'optimisation des sources d'energie dans les smart buildings "
-        "qui sont auto geres energetiquement avec des panneaux photovoltaiques, une batterie, un achat au reseau "
+        "Tu rediges des résumés de resultats d'optimisation des sources d'energie dans les smart buildings et explique les décisions observés de l'optimiseur."
+        "qui sont auto gérés energetiquement avec des panneaux photovoltaiques, une batterie, un achat au main grid (réseau) "
         "et une revente si surplus. Tu es precis, concis et tu n'inventes aucun chiffre. "
-        "Fais egalement attention aux virgules et points et arrondis a l'unite pres."
+        "Fais egalement attention aux virgules et points et arrondis a l'unite pres. Fais également attention au petites étoiles et à la mise en forme."
     )
     user_prompt = _build_llm_prompt(payload)
 

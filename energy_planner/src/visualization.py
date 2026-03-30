@@ -407,7 +407,7 @@ def save_dashboard_report_html(
   <div class="page">
     <div class="card">{figure_html}</div>
     <section class="card summary">
-      <h2>Resume naturel du dispatch</h2>
+      <h2>Resumé en langage naturel d'un expert en gestion d'énergie dans les smart buildings : </h2>
       <p class="meta">{html.escape(source_html) if source_html else ""}</p>
       {_summary_text_to_html(summary_text)}
     </section>
