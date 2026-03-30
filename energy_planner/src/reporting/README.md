@@ -23,7 +23,7 @@ Le pipeline suit les étapes suivantes :
 4. Construction du dashboard Plotly avec les courbes et indicateurs.
 5. Calcul d'une comparaison entre :
    - une baseline simple qui ne ferait qu'acheter au main grid pour répondre à la demande utilisateur,
-   - le resultat réel de l'optimiseur.
+   - le résultat réel de l'optimiseur.
 6. Construction d'un payload de synthèse pour le LLM :
    - énergies achetées/vendues,
    - utilisation PV,
@@ -31,9 +31,9 @@ Le pipeline suit les étapes suivantes :
    - cout net,
    - emissions,
    - comparaison baseline,
-   - formulation du modele d'optimisation (objectif + contraintes principales).
-7. Envoi de ce payload a OpenRouter pour generer un resume naturel en francais.
-8. Insertion de ce resume a la fin du dashboard HTML.
+   - formulation du modèle d'optimisation (objectif + contraintes principales).
+7. Envoi de ce payload a OpenRouter pour générer un resumé en langage naturel en francais
+8. Insertion de ce résumé a la fin du dashboard HTML
 
 Le LLM ne "voit" donc pas directement les graphes : il recoit un résume structuré des résultats numériques et du modèle d'optimisation, puis rédige une explication naturelle fidèle aux chiffres.
 
