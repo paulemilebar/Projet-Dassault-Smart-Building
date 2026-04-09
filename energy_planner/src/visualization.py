@@ -109,45 +109,41 @@ def create_dispatch_dashboard(
     viz_df: pd.DataFrame,
     *,
     title: str = "",
+    comparison_results: dict[str, Any] | None = None
 ) -> go.Figure:
     """
     Build an interactive multi-panel dashboard around optimizer decisions.
+    KPIs are displayed at the top, perfectly centered without overlap.
     """
     required = [
-        "hour",
-        "total_demand_kW",
-        "Pfix_pred_kW",
-        "flex_served_kW",
-        "PV",
-        "Pin",
-        "Pgo",
-        "Pch",
-        "Pdis",
-        "Ebat",
-        "net_grid_kW",
-        "Cbuy_pred_eur_per_kWh",
-        "Csell_pred_eur_per_kWh",
-        "regime",
-        "regime_code",
+        "hour", "total_demand_kW", "Pfix_pred_kW", "flex_served_kW",
+        "PV", "Pin", "Pgo", "Pch", "Pdis", "Ebat", "net_grid_kW",
+        "Cbuy_pred_eur_per_kWh", "Csell_pred_eur_per_kWh", "regime", "regime_code",
     ]
     _validate_columns(viz_df, required, "viz_df")
 
     hours = viz_df["hour"]
     regime_colors = [_REGIME_STYLES[name][1] for name in viz_df["regime"]]
     regime_scale = [
-        [code / 5, color]
-        for _, (code, color, _) in _REGIME_STYLES.items()
-        for color in [color]
+        [code / 5, color] for _, (code, color, _) in _REGIME_STYLES.items() for color in [color]
     ]
 
+    # 1. MISE À JOUR DE LA GRILLE (Plus d'espace vertical pour éviter les chevauchements)
     fig = make_subplots(
-        rows=4,
-        cols=1,
+        rows=5, 
+        cols=3, 
         shared_xaxes=True,
-        vertical_spacing=0.08,
-        row_heights=[0.34, 0.22, 0.22, 0.22],
-        specs=[[{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": True}], [{"secondary_y": False}]],
+        vertical_spacing=0.08, # <-- AUGMENTÉ pour laisser respirer les titres
+        row_heights=[0.20, 0.30, 0.20, 0.20, 0.08], # <-- Rééquilibré
+        specs=[
+            [{"type": "indicator"}, {"type": "indicator"}, {"type": "indicator"}], # 1. KPIs
+            [{"secondary_y": False, "colspan": 3}, None, None], # 2. Demand
+            [{"secondary_y": True, "colspan": 3}, None, None],  # 3. Battery
+            [{"secondary_y": True, "colspan": 3}, None, None],  # 4. Grid
+            [{"secondary_y": False, "colspan": 3}, None, None], # 5. Regime Heatmap
+        ],
         subplot_titles=(
+            "", "", "", # <-- On retire "Baseline Comparison" d'ici pour le centrer manuellement plus tard
             "Demand vs Dispatch",
             "Battery Dynamics",
             "Grid and Price Signals",
@@ -155,294 +151,149 @@ def create_dispatch_dashboard(
         ),
     )
 
-    fig.add_trace(
-        go.Scatter(
-            x=hours,
-            y=viz_df["total_demand_kW"],
-            mode="lines+markers",
-            name="Served demand",
-            line=dict(color="#111111", width=3),
-            hovertemplate="Hour %{x}<br>Served demand %{y:.2f} kW<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=viz_df["Pfix_pred_kW"],
-            name="Fixed demand",
-            marker_color="#7c7f85",
-            opacity=0.65,
-            hovertemplate="Hour %{x}<br>Fixed demand %{y:.2f} kW<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=viz_df["flex_served_kW"],
-            name="Flexible demand served",
-            marker_color="#c0d6df",
-            hovertemplate="Hour %{x}<br>Flexible served %{y:.2f} kW<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=hours,
-            y=viz_df["PV"],
-            mode="lines",
-            name="PV available",
-            fill="tozeroy",
-            line=dict(color="#f4a261", width=2),
-            fillcolor="rgba(244, 162, 97, 0.28)",
-            hovertemplate="Hour %{x}<br>PV %{y:.2f} kW<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=viz_df["Pin"],
-            name="Grid import",
-            marker_color="#d1495b",
-            hovertemplate="Hour %{x}<br>Grid import %{y:.2f} kW<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=viz_df["Pdis"],
-            name="Battery discharge",
-            marker_color="#00798c",
-            hovertemplate="Hour %{x}<br>Battery discharge %{y:.2f} kW<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=-viz_df["Pch"],
-            name="Battery charge",
-            marker_color="#66a182",
-            customdata=viz_df["Pch"],
-            hovertemplate="Hour %{x}<br>Battery charge %{customdata:.2f} kW<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=-viz_df["Pgo"],
-            name="Grid export",
-            marker_color="#2a6f97",
-            customdata=viz_df["Pgo"],
-            hovertemplate="Hour %{x}<br>Grid export %{customdata:.2f} kW<extra></extra>",
-        ),
-        row=1,
-        col=1,
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=hours,
-            y=viz_df["Ebat"],
-            mode="lines+markers",
-            name="Battery energy",
-            line=dict(color="#0d3b66", width=3),
-            fill="tozeroy",
-            fillcolor="rgba(13, 59, 102, 0.12)",
-            hovertemplate="Hour %{x}<br>Battery %{y:.2f} kWh<extra></extra>",
-        ),
-        row=2,
-        col=1,
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=viz_df["Pch"],
-            name="Charge power",
-            marker_color="#8ecae6",
-            hovertemplate="Hour %{x}<br>Charge %{y:.2f} kW<extra></extra>",
-        ),
-        row=2,
-        col=1,
-        secondary_y=True,
-    )
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=-viz_df["Pdis"],
-            name="Discharge power",
-            marker_color="#219ebc",
-            customdata=viz_df["Pdis"],
-            hovertemplate="Hour %{x}<br>Discharge %{customdata:.2f} kW<extra></extra>",
-        ),
-        row=2,
-        col=1,
-        secondary_y=True,
-    )
-
-    fig.add_trace(
-        go.Bar(
-            x=hours,
-            y=viz_df["net_grid_kW"],
-            name="Net grid exchange",
-            marker_color=regime_colors,
-            customdata=viz_df["regime"],
-            hovertemplate="Hour %{x}<br>Net grid %{y:.2f} kW<br>Regime %{customdata}<extra></extra>",
-        ),
-        row=3,
-        col=1,
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=hours,
-            y=viz_df["Cbuy_pred_eur_per_kWh"],
-            mode="lines+markers",
-            name="Buy price",
-            line=dict(color="#6d597a", width=2),
-            hovertemplate="Hour %{x}<br>Buy price %{y:.3f} eur/kWh<extra></extra>",
-        ),
-        row=3,
-        col=1,
-        secondary_y=True,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=hours,
-            y=viz_df["Csell_pred_eur_per_kWh"],
-            mode="lines",
-            name="Sell price",
-            line=dict(color="#b56576", width=2, dash="dot"),
-            hovertemplate="Hour %{x}<br>Sell price %{y:.3f} eur/kWh<extra></extra>",
-        ),
-        row=3,
-        col=1,
-        secondary_y=True,
-    )
-
-    fig.add_trace(
-        go.Heatmap(
-            x=hours,
-            y=["Regime"],
-            z=[viz_df["regime_code"].tolist()],
-            text=[[_REGIME_LABELS[name] for name in viz_df["regime"].tolist()]],
-            customdata=[viz_df["regime"].tolist()],
-            texttemplate="%{text}",
-            textfont=dict(size=10, color="#0f172a"),
-            colorscale=regime_scale,
-            showscale=False,
-            hovertemplate=(
-                "Hour %{x}<br>"
-                "Mode %{customdata}<br>"
-                "Meaning: %{meta}<extra></extra>"
+    # --- 1. COMPARAISON BASELINE (Désormais row=1) ---
+    if comparison_results:
+        fig.add_trace(
+            go.Indicator(
+                mode="number+delta",
+                value=comparison_results.get("opt_cost", 0),
+                delta={'reference': comparison_results.get("base_cost", 0), 'relative': True, 'position': "bottom", 'increasing': {'color': "#d1495b"}, 'decreasing': {'color': "#66a182"}},
+                title={"text": "Total Cost (€)", "font": {"size": 22, "color": "#1f2937"}}, # <-- Agrandissement du titre
+                number={'prefix': "€", 'font': {'size': 45}},
             ),
-            meta=[
-                [
-                    "Buying from the grid and storing part of it in the battery."
-                    if name == "Grid charge"
-                    else "Using the grid to help cover building demand."
-                    if name == "Grid support"
-                    else "Using the battery to help cover building demand."
-                    if name == "Battery support"
-                    else "Solar is covering demand and charging the battery."
-                    if name == "Solar charge"
-                    else "Solar production is higher than building needs, so surplus is exported."
-                    if name == "PV export"
-                    else "No dominant behavior; the system is in a neutral state."
-                    for name in viz_df["regime"].tolist()
-                ]
-            ],
-        ),
-        row=4,
-        col=1,
-    )
-
-    for hour, regime in zip(hours, viz_df["regime"]):
-        _, _, fill_color = _REGIME_STYLES[regime]
-        fig.add_vrect(
-            x0=hour - 0.5,
-            x1=hour + 0.5,
-            fillcolor=fill_color,
-            opacity=0.12,
-            line_width=0,
-            row=1,
-            col=1,
+            row=1, col=1
+        )
+        fig.add_trace(
+            go.Indicator(
+                mode="number+delta",
+                value=comparison_results.get("opt_co2", 0),
+                delta={'reference': comparison_results.get("base_co2", 0), 'relative': True, 'position': "bottom", 'increasing': {'color': "#d1495b"}, 'decreasing': {'color': "#66a182"}},
+                title={"text": "CO2 Emissions (kg)", "font": {"size": 22, "color": "#1f2937"}}, # <-- Agrandissement du titre
+                number={'suffix': " kg", 'font': {'size': 45}},
+            ),
+            row=1, col=2
+        )
+        
+        pv_total = viz_df["PV"].sum()
+        pv_used = (viz_df["PV"] - viz_df["Pgo"]).sum()
+        self_suff = (pv_used / pv_total * 100) if pv_total > 0 else 0
+        fig.add_trace(
+            go.Indicator(
+                mode="gauge+number",
+                value=self_suff,
+                title={"text": "Self-Consumption Rate", "font": {"size": 22, "color": "#1f2937"}}, # <-- Agrandissement du titre
+                gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#edae49"}},
+                number={'suffix': "%", 'font': {'size': 35}},
+            ),
+            row=1, col=3
         )
 
-    fig.update_layout(
-        title=title,
-        template="plotly_white",
-        height=1220,
-        barmode="relative",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.11,
-            xanchor="left",
-            x=0.0,
-            bgcolor="rgba(255,255,255,0.85)",
+    # --- 2. COURBES PRINCIPALES ---
+    fig.add_trace(go.Scatter(x=hours, y=viz_df["total_demand_kW"], mode="lines+markers", name="Served demand", line=dict(color="#111111", width=3), hovertemplate="Hour %{x}<br>Served demand %{y:.2f} kW<extra></extra>"), row=2, col=1)
+    fig.add_trace(go.Bar(x=hours, y=viz_df["Pfix_pred_kW"], name="Fixed demand", marker_color="#7c7f85", opacity=0.65, hovertemplate="Hour %{x}<br>Fixed demand %{y:.2f} kW<extra></extra>"), row=2, col=1)
+    fig.add_trace(go.Bar(x=hours, y=viz_df["flex_served_kW"], name="Flexible demand served", marker_color="#c0d6df", hovertemplate="Hour %{x}<br>Flexible served %{y:.2f} kW<extra></extra>"), row=2, col=1)
+    fig.add_trace(go.Scatter(x=hours, y=viz_df["PV"], mode="lines", name="PV available", fill="tozeroy", line=dict(color="#f4a261", width=2), fillcolor="rgba(244, 162, 97, 0.28)", hovertemplate="Hour %{x}<br>PV %{y:.2f} kW<extra></extra>"), row=2, col=1)
+    fig.add_trace(go.Bar(x=hours, y=viz_df["Pin"], name="Grid import", marker_color="#d1495b", hovertemplate="Hour %{x}<br>Grid import %{y:.2f} kW<extra></extra>"), row=2, col=1)
+    fig.add_trace(go.Bar(x=hours, y=viz_df["Pdis"], name="Battery discharge", marker_color="#00798c", hovertemplate="Hour %{x}<br>Battery discharge %{y:.2f} kW<extra></extra>"), row=2, col=1)
+    fig.add_trace(go.Bar(x=hours, y=-viz_df["Pch"], name="Battery charge", marker_color="#66a182", customdata=viz_df["Pch"], hovertemplate="Hour %{x}<br>Battery charge %{customdata:.2f} kW<extra></extra>"), row=2, col=1)
+    fig.add_trace(go.Bar(x=hours, y=-viz_df["Pgo"], name="Grid export", marker_color="#2a6f97", customdata=viz_df["Pgo"], hovertemplate="Hour %{x}<br>Grid export %{customdata:.2f} kW<extra></extra>"), row=2, col=1)
+
+    # --- 3. BATTERIE ---
+    fig.add_trace(go.Scatter(x=hours, y=viz_df["Ebat"], mode="lines+markers", name="Battery energy", line=dict(color="#0d3b66", width=3), fill="tozeroy", fillcolor="rgba(13, 59, 102, 0.12)", hovertemplate="Hour %{x}<br>Battery %{y:.2f} kWh<extra></extra>"), row=3, col=1, secondary_y=False)
+    fig.add_trace(go.Bar(x=hours, y=viz_df["Pch"], name="Charge power", marker_color="#8ecae6", hovertemplate="Hour %{x}<br>Charge %{y:.2f} kW<extra></extra>"), row=3, col=1, secondary_y=True)
+    fig.add_trace(go.Bar(x=hours, y=-viz_df["Pdis"], name="Discharge power", marker_color="#219ebc", customdata=viz_df["Pdis"], hovertemplate="Hour %{x}<br>Discharge %{customdata:.2f} kW<extra></extra>"), row=3, col=1, secondary_y=True)
+
+    # --- 4. RÉSEAU & PRIX ---
+    fig.add_trace(go.Bar(x=hours, y=viz_df["net_grid_kW"], name="Net grid exchange", marker_color=regime_colors, customdata=viz_df["regime"], hovertemplate="Hour %{x}<br>Net grid %{y:.2f} kW<br>Regime %{customdata}<extra></extra>"), row=4, col=1, secondary_y=False)
+    fig.add_trace(go.Scatter(x=hours, y=viz_df["Cbuy_pred_eur_per_kWh"], mode="lines+markers", name="Buy price", line=dict(color="#6d597a", width=2), hovertemplate="Hour %{x}<br>Buy price %{y:.3f} eur/kWh<extra></extra>"), row=4, col=1, secondary_y=True)
+    fig.add_trace(go.Scatter(x=hours, y=viz_df["Csell_pred_eur_per_kWh"], mode="lines", name="Sell price", line=dict(color="#b56576", width=2, dash="dot"), hovertemplate="Hour %{x}<br>Sell price %{y:.3f} eur/kWh<extra></extra>"), row=4, col=1, secondary_y=True)
+
+    # --- 5. RÉGIMES HEATMAP ---
+    fig.add_trace(
+        go.Heatmap(
+            x=hours, y=["Regime"], z=[viz_df["regime_code"].tolist()],
+            text=[[_REGIME_LABELS[name] for name in viz_df["regime"].tolist()]],
+            customdata=[viz_df["regime"].tolist()], texttemplate="%{text}",
+            textfont=dict(size=10, color="#0f172a"), colorscale=regime_scale, showscale=False,
+            hovertemplate="Hour %{x}<br>Mode %{customdata}<br>Meaning: %{meta}<extra></extra>",
+            meta=[[
+                "Buying from the grid and storing part of it in the battery." if name == "Grid charge"
+                else "Using the grid to help cover building demand." if name == "Grid support"
+                else "Using the battery to help cover building demand." if name == "Battery support"
+                else "Solar is covering demand and charging the battery." if name == "Solar charge"
+                else "Solar production is higher than building needs, so surplus is exported." if name == "PV export"
+                else "No dominant behavior; the system is in a neutral state." for name in viz_df["regime"].tolist()
+            ]],
         ),
-        margin=dict(l=70, r=55, t=145, b=210),
+        row=5, col=1,
+    )
+
+    # --- MISE EN FORME GÉNÉRALE ---
+    fig.update_layout(
+        title=dict(text=title, y=0.98),
+        template="plotly_white",
+        height=1300, # <-- Légèrement agrandi pour accommoder l'espacement
+        barmode="relative",
+        # LA LÉGENDE EST CENTRÉE EXACTEMENT DANS L'ESPACE VIDE
+        legend=dict(
+            orientation="h", 
+            yanchor="top", y=0.81, # Juste en dessous des KPIs
+            xanchor="center", x=0.5, # Parfaitement centrée
+            bgcolor="rgba(255,255,255,0.85)"
+        ),
+        margin=dict(l=70, r=55, t=140, b=160), # <-- t=140 pour laisser la place au grand titre
         hovermode="x unified",
         font=dict(family="Segoe UI, Arial, sans-serif", size=12),
         paper_bgcolor="#f8fafc",
         plot_bgcolor="#ffffff",
     )
 
-    fig.update_xaxes(
-        tickmode="array",
-        tickvals=list(range(24)),
-        ticktext=[f"{hour:02d}:00" for hour in range(24)],
-        tickangle=28,
-        tickfont=dict(size=11, color="#334155"),
-        automargin=True,
-        row=4,
-        col=1,
-    )
-    fig.update_xaxes(title_text="Hour of day", row=4, col=1)
-    fig.update_xaxes(showgrid=False, row=4, col=1)
+    # Ajout du TITRE PRINCIPAL GRAND FORMAT ET CENTRÉ
+    if comparison_results:
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=0.5, y=1.06, # Au milieu tout en haut
+            showarrow=False,
+            text="<b>Baseline Comparison</b>",
+            font=dict(size=30, color="#0f172a"), # Très grand et sombre
+            xanchor="center", yanchor="bottom"
+        )
 
-    fig.update_yaxes(title_text="kW", row=1, col=1)
-    fig.update_yaxes(title_text="Battery energy (kWh)", row=2, col=1, secondary_y=False)
-    fig.update_yaxes(title_text="Battery power (kW)", row=2, col=1, secondary_y=True)
-    fig.update_yaxes(title_text="Net grid (kW)", row=3, col=1, secondary_y=False)
-    fig.update_yaxes(title_text="Price (eur/kWh)", row=3, col=1, secondary_y=True)
-    fig.update_yaxes(showticklabels=False, row=4, col=1)
+    # Mise à jour des axes X
+    fig.update_xaxes(
+        tickmode="array", tickvals=list(range(24)), ticktext=[f"{hour:02d}:00" for hour in range(24)],
+        tickangle=28, tickfont=dict(size=11, color="#334155"), automargin=True,
+        row=5, col=1,
+    )
+    fig.update_xaxes(title_text="Hour of day", row=5, col=1)
+    fig.update_xaxes(showgrid=False, row=5, col=1)
+
+    # Mise à jour des axes Y
+    fig.update_yaxes(title_text="kW", row=2, col=1)
+    fig.update_yaxes(title_text="Battery (kWh)", row=3, col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Power (kW)", row=3, col=1, secondary_y=True)
+    fig.update_yaxes(title_text="Net grid (kW)", row=4, col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Price (€/kWh)", row=4, col=1, secondary_y=True)
+    fig.update_yaxes(showticklabels=False, row=5, col=1)
 
     fig.update_annotations(font=dict(size=16, color="#1f2937"))
 
+    # Légende textuelle tout en bas
     fig.add_annotation(
-        xref="paper",
-        yref="paper",
-        x=0.0,
-        y=-0.16,
-        showarrow=False,
-        align="left",
+        xref="paper", yref="paper",
+        x=0.5, y=-0.12, # Centrée en bas
+        xanchor="center",
+        showarrow=False, align="center",
         text=(
-            "<span style='color:#d1495b'><b>GC</b></span> Grid charge: buying from the grid and charging the battery.  |  "
-            "<span style='color:#edae49'><b>GS</b></span> Grid support: the grid is helping power the building.  |  "
-            "<span style='color:#00798c'><b>BS</b></span> Battery support: the battery is supplying part of the demand.<br>"
-            "<span style='color:#66a182'><b>SC</b></span> Solar charge: solar covers demand and charges the battery.  |  "
-            "<span style='color:#2a6f97'><b>EX</b></span> PV export: extra solar energy is exported to the grid.  |  "
-            "<span style='color:#6c757d'><b>BA</b></span> Balanced: no strong mode dominates in that hour."
+            "<span style='color:#d1495b'><b>GC</b></span> Grid charge  |  "
+            "<span style='color:#edae49'><b>GS</b></span> Grid support  |  "
+            "<span style='color:#00798c'><b>BS</b></span> Battery support<br>"
+            "<span style='color:#66a182'><b>SC</b></span> Solar charge  |  "
+            "<span style='color:#2a6f97'><b>EX</b></span> PV export  |  "
+            "<span style='color:#6c757d'><b>BA</b></span> Balanced"
         ),
-        bgcolor="rgba(255,255,255,0.98)",
-        bordercolor="rgba(203,213,225,0.95)",
-        borderwidth=1,
-        borderpad=10,
-        font=dict(size=11, color="#0f172a"),
+        bgcolor="rgba(255,255,255,0.98)", bordercolor="rgba(203,213,225,0.95)", borderwidth=1, borderpad=10,
+        font=dict(size=12, color="#0f172a"),
     )
 
     return fig
@@ -556,7 +407,7 @@ def save_dashboard_report_html(
   <div class="page">
     <div class="card">{figure_html}</div>
     <section class="card summary">
-      <h2>Resume naturel du dispatch</h2>
+      <h2>Resumé en langage naturel d'un expert en gestion d'énergie dans les smart buildings : </h2>
       <p class="meta">{html.escape(source_html) if source_html else ""}</p>
       {_summary_text_to_html(summary_text)}
     </section>
@@ -627,7 +478,10 @@ def add_natural_language_summary(
     return fig
 
 
-def summarize_dispatch(viz_df: pd.DataFrame) -> dict[str, Any]:
+def summarize_dispatch(
+    viz_df: pd.DataFrame,
+    comparison_results: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Return compact metrics that are useful in notebooks or reports.
     """
@@ -638,7 +492,7 @@ def summarize_dispatch(viz_df: pd.DataFrame) -> dict[str, Any]:
     )
 
     regime_hours = viz_df["regime"].value_counts().sort_index().to_dict()
-    return {
+    summary = {
         "total_served_demand_kWh": round(float(viz_df["total_demand_kW"].sum()), 3),
         "total_pv_kWh": round(float(viz_df["PV"].sum()), 3),
         "grid_import_kWh": round(float(viz_df["Pin"].sum()), 3),
@@ -648,3 +502,22 @@ def summarize_dispatch(viz_df: pd.DataFrame) -> dict[str, Any]:
         "peak_battery_kWh": round(float(viz_df["Ebat"].max()), 3),
         "regime_hours": regime_hours,
     }
+
+    if comparison_results:
+        summary["comparison"] = {
+            "base_cost": round(float(comparison_results["base_cost"]), 3),
+            "opt_cost": round(float(comparison_results["opt_cost"]), 3),
+            "base_co2": round(float(comparison_results["base_co2"]), 3),
+            "opt_co2": round(float(comparison_results["opt_co2"]), 3),
+        }
+    else:
+        optional_comparison_columns = ["base_cost", "opt_cost", "base_co2", "opt_co2"]
+        extracted = {
+            column: round(float(viz_df[column].iloc[0]), 3)
+            for column in optional_comparison_columns
+            if column in viz_df.columns
+        }
+        if len(extracted) == len(optional_comparison_columns):
+            summary["comparison"] = extracted
+
+    return summary
