@@ -229,7 +229,7 @@ def _build_llm_prompt(payload: dict[str, Any]) -> str:
         "Redige une explication détaillée en francais, claire et naturelle de la gestion des sources d'energie (PV, batteries et achat au fournisseur) pour la demande de l'utilisateur.",
         "Tu dois rester strictement fidele aux chiffres fournis et ne rien inventer. Fais attention aux points et virgules dans les puissances, et arrondis a l'unite pres.",
         "Mentionne explicitement que le cout d'achat ne porte que sur l'energie importee P_in, pas sur toute la demande servie. Mentionne aussi les ventes P_go, la batterie, le PV, le cout net et les heures de pics importantes.",
-        "Si des valeurs de comparaison baseline sont fournies, intègre-les explicitement pour comparer les resultats actuels de l'optimiseur a cette baseline afin de souligner les gains en argent et émissions de gaz à effet de serre de cette gestion d'énergie optimisée comparée à une baseline d'un bâtiment classique.",
+        "Si des valeurs de comparaison baseline sont fournies, intègre-les explicitement pour comparer les resultats actuels de l'optimiseur a cette baseline afin de souligner les gains en argent et émissions de gaz à effet de serre de cette gestion d'énergie optimisée comparée à une baseline d'un bâtiment classique. DERNIER POINT : Fais le en quelques paragraphes mais sans rajouter de double ** ou de symboles bizarres.",
         "",
         "Chiffres a resumer mais en langage naturel. Explique comme si tu etais un expert en energie:",
         f"- Demande servie: {totals['served_demand_kWh']} kWh",
