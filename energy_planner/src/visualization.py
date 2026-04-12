@@ -144,7 +144,7 @@ def create_dispatch_dashboard(
         ],
         subplot_titles=(
             "", "", "", # <-- On retire "Baseline Comparison" d'ici pour le centrer manuellement plus tard
-            "Demand vs Dispatch",
+            "",
             "Battery Dynamics",
             "Grid and Price Signals",
             "Operating Regimes",
